@@ -44,5 +44,9 @@ class TournamentTeam(var team: Team) {
         fun removeTeam(team: TournamentTeam) {
 
         }
+
+        fun createNewTeam(creator: TournamentPlayer): TournamentTeam{
+
+        }
     }
 }

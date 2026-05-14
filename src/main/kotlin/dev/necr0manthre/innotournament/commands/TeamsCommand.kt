@@ -21,7 +21,6 @@ import net.kyori.adventure.text.format.Style
 import net.kyori.adventure.text.format.TextDecoration
 import net.minecraft.commands.arguments.ComponentArgument
 import net.minecraft.commands.arguments.EntityArgument
-import org.bukkit.OfflinePlayer
 import org.bukkit.entity.Player
 
 object TeamsCommand {
@@ -373,31 +372,16 @@ object TeamsCommand {
                     )
                         .executes { ctx: CommandContext<CommandSourceStack> ->
                             val inviter = player(ctx) ?: return@executes 1
-                            val invitedSp: ServerPlayer = EntityArgument.getPlayer(ctx, "player")
-                            val invited: Entity = PlayerManager.Companion.getEntity(invitedSp)
+                            val invited = ctx.getPlayerArgument("player")
                             if (invited === inviter) {
                                 ctx.getSource()
                                     .sendFailure(Component.text("You cannot invite yourself"))
                                 return@executes 1
                             }
-                            val teamOpt: java.util.Optional<Entity> = team(ctx)
-                            val server: MinecraftServer = TeamsCommand.server(ctx)
-                            val teamEntity: Entity = teamOpt.orElseGet(java.util.function.Supplier {
-                                val scoreboard: ServerScoreboard = server.getScoreboard()
-                                val base: String = PlayerManager.Companion.getName(inviter).orElse("team")
-                                var name = base
-                                var i = 1
-                                while (scoreboard.getPlayerTeam(name) != null) name = base + "_" + (i++)
-                                val pTeam: PlayerTeam = scoreboard.addPlayerTeam(name)
-                                val entity: Entity = TeamsCommand.teamManager(ctx).getEntity(pTeam)
-                                TeamOwner.setTeamOwner(entity, inviter)
-                                TeamManager.forceAddPlayer(entity, inviter)
-                                entity
-                            })
+                            val team = team(ctx)
+                            val teamEntity = team ?: TournamentTeam.createNewTeam(inviter)
                             InviteSystem.invitePlayerToTeam(invited, teamEntity, 1000)
-                            PlayerManager.Companion.getServerPlayer(invited)
-                                .ifPresent(java.util.function.Consumer { p: ServerPlayer? ->
-                                    p.sendSystemMessage(
+                            invited.player?.sendMessage(
                                         Component.empty()
                                             .append(PlayerManager.Companion.getDisplayName(inviter).orElseThrow())
                                             .append(Component.text(" invites you to team "))
