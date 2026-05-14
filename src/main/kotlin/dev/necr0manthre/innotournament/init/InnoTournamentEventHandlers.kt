@@ -101,7 +101,7 @@ interface InnoTournamentEventHandlers {
                                 Consumer { team: Entity? ->
                                     tournament!!.addScores(
                                         team,
-                                        scores!![TournamentPlayer.Companion.getTournamentData(playerProvider.getSourcePlayer()).lives]!!.toInt()
+                                        scores!![TournamentPlayer.Companion.get(playerProvider.getSourcePlayer()).lives]!!.toInt()
                                             .toDouble()
                                     )
                                 })

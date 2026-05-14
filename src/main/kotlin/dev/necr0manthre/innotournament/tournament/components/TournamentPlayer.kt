@@ -2,6 +2,7 @@ package dev.necr0manthre.innotournament.tournament.components
 
 import dev.necr0manthre.innotournament.tournament.Tournament
 import net.kyori.adventure.text.Component
+import org.bukkit.OfflinePlayer
 import org.bukkit.entity.Player
 import java.lang.ref.WeakReference
 
@@ -10,10 +11,11 @@ class TournamentPlayer {
     var lives: Int = 0
     var tournament: WeakReference<Tournament>? = null
     var team: TournamentTeam? = null
+    val offlinePlayer: OfflinePlayer = TODO()
     val displayName: Component = Component.empty()
 
     companion object {
-        fun getTournamentData(player: Player): TournamentPlayer {
+        fun get(player: Player): TournamentPlayer {
             TODO()
         }
     }

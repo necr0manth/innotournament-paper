@@ -13,9 +13,9 @@ internal class InnotournamentBootstrap : PluginBootstrap {
         context.lifecycleManager.registerEventHandler(LifecycleEvents.COMMANDS){
             registrarEvent ->
             val registrar = registrarEvent.registrar()
-            TeamsCommand.register(registrar)
-            TournamentCommand.register(registrar)
-            WorldBorderCommand.register(registrar)
+            TeamsCommand.register(registrar, context)
+            TournamentCommand.register(registrar, context)
+            WorldBorderCommand.register(registrar, context)
         }
     }
 }
