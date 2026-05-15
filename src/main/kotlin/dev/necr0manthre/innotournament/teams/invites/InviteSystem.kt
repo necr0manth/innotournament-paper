@@ -1,49 +1,29 @@
 package dev.necr0manthre.innotournament.teams.invites
 
-import dev.necr0manthre.innotournament.tournament.components.TournamentPlayer
-import dev.necr0manthre.innotournament.tournament.components.TournamentTeam
-import java.util.WeakHashMap
+import dev.necr0manthre.innotournament.tournament.TournamentPlayer
+import dev.necr0manthre.innotournament.tournament.TournamentTeam
 
 object InviteSystem {
-    private val invitesByTeam = WeakHashMap<TournamentTeam, MutableSet<Invite>>()
-    private val invitesByPlayer = WeakHashMap<TournamentPlayer, MutableSet<Invite>>()
-
+    private val invites = mutableSetOf<Invite>()
     fun register() {
     }
 
+    sealed interface Invites {
+        val invites: Set<Invite>
+    }
+
+    private class InvitesImpl : Invites {
+        val invitesInternal = mutableSetOf<Invite>()
+        override val invites: Set<Invite> = invitesInternal.toSet()
+    }
+
+    fun createInvites(): Invites = InvitesImpl()
     fun tick() {
-        invitesByTeam.values.forEach { invites ->
-            invites.removeIf { invite ->
-                invite.tick()
-                if (invite.isExpired) {
-                    invitesByPlayer[invite.player]?.remove(invite)
-                    true
-                } else {
-                    false
-                }
-            }
-        }
-    }
-
-    fun isPlayerInvitedToTeam(player: TournamentPlayer, team: TournamentTeam): Boolean {
-        return invitesByTeam[team]
-            ?.any { it.player == player && !it.isExpired }
-            ?: false
-    }
-
-    fun invitePlayerToTeam(player: TournamentPlayer, team: TournamentTeam, lifetime: Int) {
-        if (isPlayerInvitedToTeam(player, team)) return
-
-        val invite = Invite(team, player, lifetime)
-        invitesByTeam.getOrPut(team) { HashSet() }.add(invite)
-        invitesByPlayer.getOrPut(player) { HashSet() }.add(invite)
-    }
-
-    fun rejectInvite(player: TournamentPlayer, team: TournamentTeam) {
-        val teamInvites = invitesByTeam[team] ?: return
-        teamInvites.removeIf { invite ->
-            if (invite.player == player) {
-                invitesByPlayer[player]?.remove(invite)
+        invites.removeIf { invite ->
+            invite.tick()
+            if (invite.isExpired) {
+                invite.player.invites().remove(invite)
+                invite.team.invites().remove(invite)
                 true
             } else {
                 false
@@ -51,11 +31,32 @@ object InviteSystem {
         }
     }
 
-    fun getInvitesForPlayer(player: TournamentPlayer): Set<Invite> {
-        return invitesByPlayer[player]?.toSet() ?: emptySet()
+    fun isPlayerInvitedToTeam(player: TournamentPlayer, team: TournamentTeam): Boolean {
+        return team.invites().any { it.player == player && !it.isExpired }
     }
 
-    fun getInvitesForTeam(team: TournamentTeam): Set<Invite> {
-        return invitesByTeam[team]?.toSet() ?: emptySet()
+    fun invitePlayerToTeam(player: TournamentPlayer, team: TournamentTeam, lifetime: Int) {
+        if (isPlayerInvitedToTeam(player, team)) return
+
+        val invite = Invite(team, player, lifetime)
+        invites.add(invite)
+        team.invites().add(invite)
+        player.invites().add(invite)
     }
+
+    fun rejectInvite(player: TournamentPlayer, team: TournamentTeam) {
+        val teamInvites = team.invites()
+        teamInvites.removeIf { invite ->
+            if (invite.player == player) {
+                player.invites().remove(invite)
+                true
+            } else {
+                false
+            }
+        }
+    }
+
+    private fun TournamentPlayer.invites() = (invites as InvitesImpl).invitesInternal
+    private fun TournamentTeam.invites() = (invites as InvitesImpl).invitesInternal
 }
+
