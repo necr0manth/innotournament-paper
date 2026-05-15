@@ -2,6 +2,7 @@ package dev.necr0manthre.innotournament.teams.invites
 
 import dev.necr0manthre.innotournament.tournament.TournamentPlayer
 import dev.necr0manthre.innotournament.tournament.TournamentTeam
+import java.util.Collections
 
 object InviteSystem {
     private val invites = mutableSetOf<Invite>()
@@ -14,7 +15,7 @@ object InviteSystem {
 
     private class InvitesImpl : Invites {
         val invitesInternal = mutableSetOf<Invite>()
-        override val invites: Set<Invite> = invitesInternal.toSet()
+        override val invites: Set<Invite> = Collections.unmodifiableSet(invitesInternal)
     }
 
     fun createInvites(): Invites = InvitesImpl()
