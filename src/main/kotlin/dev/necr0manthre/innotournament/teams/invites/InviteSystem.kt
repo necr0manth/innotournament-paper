@@ -2,69 +2,60 @@ package dev.necr0manthre.innotournament.teams.invites
 
 import dev.necr0manthre.innotournament.tournament.components.TournamentPlayer
 import dev.necr0manthre.innotournament.tournament.components.TournamentTeam
-
+import java.util.WeakHashMap
 
 object InviteSystem {
-    val INVITE_EVENT: Event<java.util.function.Consumer<Invite?>?> = EventFactory.createLoop()
-    val INVITE_EXPIRATION_EVENT: Event<java.util.function.Consumer<Invite?>?> = EventFactory.createLoop()
+    private val invitesByTeam = WeakHashMap<TournamentTeam, MutableSet<Invite>>()
+    private val invitesByPlayer = WeakHashMap<TournamentPlayer, MutableSet<Invite>>()
 
     fun register() {
-        TickEvent.SERVER_POST.register({ obj: InviteSystem?, server: MinecraftServer? -> tick(server) })
     }
 
-    fun tick(server: MinecraftServer?) {
-        val teamManager: TeamManager = TeamManager.Companion.get(server)
-        teamManager.getAllTeams().forEach(java.util.function.Consumer { team: Entity? ->
-            val invites: Invites = Invites.getComponent(team)
-            synchronized(invites.invites) {
-                invites.invites.removeIf { invite: Invite? ->
-                    invite!!.tick()
-                    if (invite.isExpired()) {
-                        INVITE_EXPIRATION_EVENT.invoker().accept(invite)
-                        Invites.getComponent(invite.player).invites.remove(invite)
-                        return@removeIf true
-                    }
+    fun tick() {
+        invitesByTeam.values.forEach { invites ->
+            invites.removeIf { invite ->
+                invite.tick()
+                if (invite.isExpired) {
+                    invitesByPlayer[invite.player]?.remove(invite)
+                    true
+                } else {
                     false
                 }
             }
-        })
-    }
-
-    fun isPlayerInvitedToTeam(player: TournamentPlayer, team: TournamentTeam): Boolean {
-        val invites: Invites = Invites.getComponent(team)
-        synchronized(invites.invites) {
-            return invites.invites.stream()
-                .anyMatch { invite: Invite? -> invite!!.player.equals(player) && !invite.isExpired() }
         }
     }
 
-    fun invitePlayerToTeam(player: Entity, team: Entity, lifetime: Int) {
-        if (isPlayerInvitedToTeam(player, team)) return
-        val invite = Invite(team, player, lifetime)
-        Invites.getComponent(team).invites.add(invite)
-        Invites.getComponent(player).invites.add(invite)
-        INVITE_EVENT.invoker().accept(invite)
+    fun isPlayerInvitedToTeam(player: TournamentPlayer, team: TournamentTeam): Boolean {
+        return invitesByTeam[team]
+            ?.any { it.player == player && !it.isExpired }
+            ?: false
     }
 
-    fun rejectInvite(player: Entity, team: Entity) {
-        if (!isPlayerInvitedToTeam(player, team)) return
-        val invites: Invites = Invites.getComponent(team)
-        synchronized(invites.invites) {
-            invites.invites.removeIf { invite: Invite? ->
-                if (invite!!.player.equals(player)) {
-                    Invites.getComponent(player).invites.remove(invite)
-                    return@removeIf true
-                }
+    fun invitePlayerToTeam(player: TournamentPlayer, team: TournamentTeam, lifetime: Int) {
+        if (isPlayerInvitedToTeam(player, team)) return
+
+        val invite = Invite(team, player, lifetime)
+        invitesByTeam.getOrPut(team) { HashSet() }.add(invite)
+        invitesByPlayer.getOrPut(player) { HashSet() }.add(invite)
+    }
+
+    fun rejectInvite(player: TournamentPlayer, team: TournamentTeam) {
+        val teamInvites = invitesByTeam[team] ?: return
+        teamInvites.removeIf { invite ->
+            if (invite.player == player) {
+                invitesByPlayer[player]?.remove(invite)
+                true
+            } else {
                 false
             }
         }
     }
 
-    fun getInvitesForPlayer(player: Entity): MutableSet<Invite?> {
-        return java.util.Set.copyOf<Invite?>(Invites.getComponent(player).invites)
+    fun getInvitesForPlayer(player: TournamentPlayer): Set<Invite> {
+        return invitesByPlayer[player]?.toSet() ?: emptySet()
     }
 
-    fun getInvitesForTeam(team: Entity): MutableSet<Invite?> {
-        return java.util.Set.copyOf<Invite?>(Invites.getComponent(team).invites)
+    fun getInvitesForTeam(team: TournamentTeam): Set<Invite> {
+        return invitesByTeam[team]?.toSet() ?: emptySet()
     }
 }

@@ -8,7 +8,7 @@ import io.papermc.paper.command.brigadier.Commands
 
 class CommandRegisterer(val registrar: Commands, private vararg val aliases: String) {
 
-    fun register(argumentBuilder: ArgumentBuilder<CommandSourceStack?, *>?): List<String> {
+    fun register(argumentBuilder: ArgumentBuilder<CommandSourceStack, *>): List<String> {
         return buildList {
             for (alias in aliases) {
                 addAll(registrar.register(Commands.literal(alias).then(argumentBuilder).build()))
@@ -16,7 +16,7 @@ class CommandRegisterer(val registrar: Commands, private vararg val aliases: Str
         }
     }
 
-    fun register(argument: CommandNode<CommandSourceStack?>?): List<String> {
+    fun register(argument: CommandNode<CommandSourceStack>): List<String> {
         return buildList {
             for (alias in aliases) {
                 addAll(registrar.register(Commands.literal(alias).then(argument).build()))

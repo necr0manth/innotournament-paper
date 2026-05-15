@@ -1,24 +1,15 @@
 package dev.necr0manthre.innotournament.teams.invites
 
-import dev.dominion.ecs.api.Entity
+import dev.necr0manthre.innotournament.tournament.components.TournamentPlayer
+import dev.necr0manthre.innotournament.tournament.components.TournamentTeam
 
-class Invite(team: Entity?, player: Entity?, lifetime: Int) {
-    val team: Entity?
-    val player: Entity?
-
-    @Getter
+class Invite(
+    val team: TournamentTeam,
+    val player: TournamentPlayer,
     private var lifetime: Int
-
-    init {
-        this.team = team
-        this.player = player
-        this.lifetime = lifetime
-    }
-
+) {
     fun tick() {
-        if (lifetime > 0) {
-            lifetime--
-        }
+        if (lifetime > 0) lifetime--
     }
 
     val isExpired: Boolean

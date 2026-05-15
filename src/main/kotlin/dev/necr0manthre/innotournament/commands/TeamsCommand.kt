@@ -1,6 +1,7 @@
 package dev.necr0manthre.innotournament.commands
 
 import com.mojang.brigadier.Command
+import com.mojang.brigadier.arguments.BoolArgumentType
 import com.mojang.brigadier.arguments.StringArgumentType
 import com.mojang.brigadier.builder.RequiredArgumentBuilder
 import com.mojang.brigadier.context.CommandContext
@@ -17,10 +18,11 @@ import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.event.ClickEvent
 import net.kyori.adventure.text.event.HoverEvent
 import net.kyori.adventure.text.format.NamedTextColor
-import net.kyori.adventure.text.format.Style
 import net.kyori.adventure.text.format.TextDecoration
-import net.minecraft.commands.arguments.ComponentArgument
-import net.minecraft.commands.arguments.EntityArgument
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
+import net.minecraft.server.MinecraftServer
+import org.bukkit.Bukkit
+import org.bukkit.craftbukkit.CraftServer
 import org.bukkit.entity.Player
 
 object TeamsCommand {
@@ -28,24 +30,25 @@ object TeamsCommand {
         registrar: Commands
     ) {
         val registerer = CommandRegisterer(registrar, "teams", "p")
+
         registerer.register(
             Commands.literal("leave")
                 .executes { ctx ->
-                    if (!checkTeam(ctx)) return@executes 1
                     val player = player(ctx) ?: return@executes 1
-                    val team = player.team ?: return@executes 1
+                    val team = checkTeam(ctx) ?: return@executes 1
                     val oldOwner = team.owner
-                    val success: Boolean = team.tryKickPlayerFromTeam(player).isSuccess
-                    if (success) ctx.source.sender.sendMessage(
+
+                    if (!team.tryKickPlayerFromTeam(player).isSuccess) return@executes 1
+                    ctx.source.sender.sendMessage(
                         Component.text("You left from team ")
                             .append(team.displayName)
                     )
-                    else return@executes 1
-                    if (team.players.isEmpty())
+
+                    if (team.players.isEmpty()) {
                         TournamentTeam.removeTeam(team)
-                    else {
-                        for (player1 in team.players) {
-                            player1.player?.sendMessage(
+                    } else {
+                        team.players.forEach { member ->
+                            member.player?.sendMessage(
                                 Component.empty()
                                     .append(player.displayName)
                                     .append(Component.text(" left from your team"))
@@ -53,419 +56,225 @@ object TeamsCommand {
                         }
                         if (oldOwner != team.owner) {
                             team.owner?.player?.sendMessage(
-                                Component.text("You are owner of team ")
-                                    .color(NamedTextColor.GOLD)
+                                Component.text("You are owner of team ", NamedTextColor.GOLD)
                                     .append(team.displayName)
                             )
                         }
                     }
-                    1
+                    updateSidebars()
+                    Command.SINGLE_SUCCESS
                 }
         )
+
         registerer.register(
             Commands.literal("myTeam")
                 .executes { ctx ->
-                    if (!checkTeam(ctx)) return@executes 1
                     val player = player(ctx) ?: return@executes 1
-                    val team = player.team ?: return@executes 1
-
-                    val ans = Component.empty().toBuilder()
-                    ans.append(
-                        Component.text("\n===============\n")
-                            .color(NamedTextColor.GRAY)
-                    )
-                    val isOwner = team.owner == player
-
-                    ans.append(Component.text("Your team:\n"))
-
-                    ans.append(
-                        Component.text("Name: ")
-                            .color(NamedTextColor.AQUA)
-                            .decoration(TextDecoration.ITALIC, true)
-                    )
-                    ans.append(team.displayName)
-                    if (isOwner) {
-                        ans.append(Component.text(" "))
-                        ans.append(
-                            Component.text("[Edit]").style(
-                                Style.empty()
-                                    .color(NamedTextColor.GRAY)
-                                    .clickEvent(
-                                        ClickEvent.suggestCommand(
-                                            "/teams edit name " + team.displayName.toString()
-                                        )
-                                    )
-                                    .hoverEvent(
-                                        HoverEvent.showText(
-                                            Component.text(
-                                                "Click to edit name of your team"
-                                            )
-                                        )
-                                    )
-                            )
-                        )
-                    }
-                    ans.appendNewline()
-
-                    ans.append(
-                        Component.text("Members: \n").withStyle(ChatFormatting.DARK_AQUA)
-                            .withStyle(ChatFormatting.BOLD)
-                    )
-                    ans.append(" ")
-                    ans.append(
-                        PlayerManager.Companion.getDisplayName(player)
-                            .orElse(Component.text("Unknown player"))
-                    )
-                    ans.append(
-                        Component.text(if (isOwner) " (Owner, You) " else " (You) ")
-                            .withStyle(ChatFormatting.GOLD).withStyle(ChatFormatting.ITALIC)
-                    )
-                    ans.append(
-                        Component.text("[Leave]").withStyle(ChatFormatting.RED)
-                            .withStyle(
-                                Style.EMPTY
-                                    .withClickEvent(RunCommand("/teams tryLeave"))
-                                    .withHoverEvent(
-                                        HoverEvent.ShowText(
-                                            Component.text(
-                                                "Click to leave your team"
-                                            )
-                                        )
-                                    )
-                            )
-                    )
-                    ans.append("\n")
-
-                    for (player1 in team.players) {
-                        if (player1 === player) continue
-                        ans.append(" ")
-                        ans.append(
-                            PlayerManager.Companion.getDisplayName(player1)
-                                .orElse(Component.text("Unknown player"))
-                        )
-                        if (isOwner) {
-                            ans.append(
-                                Component.text(" [Kick]").withStyle(ChatFormatting.RED)
-                                    .withStyle(
-                                        Style.EMPTY
-                                            .withClickEvent(
-                                                RunCommand(
-                                                    "/teams tryKick " + player1.offlinePlayer.name
-                                                )
-                                            )
-                                            .withHoverEvent(
-                                                HoverEvent.ShowText(
-                                                    Component.text(
-                                                        "Click to kick "
-                                                    ).append(
-                                                        PlayerManager.Companion.getDisplayName(player1)
-                                                            .orElse(Component.text("Unknown player"))
-                                                    ).append(" from your team")
-                                                )
-                                            )
-                                    )
-                            )
-                        }
-                        if (player1 === TeamOwner.getTeamOwner(team)) {
-                            ans.append(
-                                Component.text(" (Owner)").withStyle(ChatFormatting.GOLD)
-                                    .withStyle(ChatFormatting.ITALIC)
-                            )
-                        }
-                        ans.append("\n")
-                    }
-                    if (TeamSettings.Companion.getSettings(team).acceptAll) {
-                        ans.append(
-                            Component.text("Accept all: ").withStyle(ChatFormatting.AQUA)
-                                .append(
-                                    Component.text("true").withStyle(ChatFormatting.GREEN)
-                                )
-                                .withStyle(
-                                    Style.EMPTY
-                                        .withHoverEvent(
-                                            HoverEvent.ShowText(
-                                                Component.text(
-                                                    "Your team accepts all player, invites and requests and not needed"
-                                                )
-                                            )
-                                        )
-                                )
-                        )
-                        if (isOwner) {
-                            ans.append(
-                                Component.text(" [Change]")
-                                    .withStyle(ChatFormatting.GRAY)
-                                    .withStyle(
-                                        Style.EMPTY
-                                            .withClickEvent(RunCommand("/teams acceptAll false"))
-                                            .withHoverEvent(
-                                                HoverEvent.ShowText(
-                                                    Component.text(
-                                                        "Click to make your team not accept all players, instead you will use invites or requests"
-                                                    )
-                                                )
-                                            )
-                                    )
-                            )
-                        }
-                    } else {
-                        ans.append(
-                            Component.text("Accept all: ").withStyle(ChatFormatting.AQUA)
-                                .append(
-                                    Component.text("false")
-                                        .withStyle(ChatFormatting.DARK_GRAY)
-                                )
-                                .withStyle(
-                                    Style.EMPTY
-                                        .withHoverEvent(
-                                            HoverEvent.ShowText(
-                                                Component.text(
-                                                    "Your team accepts players only from invites or requests"
-                                                )
-                                            )
-                                        )
-                                )
-                        )
-                        if (isOwner) {
-                            ans.append(
-                                Component.text(" [Change]")
-                                    .withStyle(ChatFormatting.GRAY)
-                                    .withStyle(
-                                        Style.EMPTY
-                                            .withClickEvent(RunCommand("/teams acceptAll true"))
-                                            .withHoverEvent(
-                                                HoverEvent.ShowText(
-                                                    Component.text(
-                                                        "Click to make your team accept all players who typed /teams join <Your team name>"
-                                                    )
-                                                )
-                                            )
-                                    )
-                            )
-                        }
-                    }
-
-                    ans.append(
-                        Component.text("\n===============").withStyle(ChatFormatting.GRAY)
-                    )
-                    ctx.getSource().sendSystemMessage(ans)
-                    1
+                    val team = checkTeam(ctx) ?: return@executes 1
+                    ctx.source.sender.sendMessage(myTeamMessage(player, team))
+                    Command.SINGLE_SUCCESS
                 }
         )
 
         registerer.register(
             Commands.literal("join")
                 .then(
-                    Commands.argument<String>("team", StringArgumentType.string())
+                    Commands.argument<String>("team", StringArgumentType.greedyString())
                         .suggestTeams()
                         .executes { ctx ->
                             val player = player(ctx) ?: return@executes 1
-                            //TODO send failure if no team
                             val team = TournamentTeam.getTeamById(StringArgumentType.getString(ctx, "team"))
-                                ?: return@executes 1
-                            if (!team.acceptAll && !InviteSystem.isPlayerInvitedToTeam(
-                                    player,
-                                    team
-                                ) ||
-                                !team.tryAddPlayerToTeam(player).isSuccess
-                            ) {
-                                ctx.getSource()
-                                    .sendFailure(Component.text("You can't join this team"))
-                                return@Command 1
+                                ?: run {
+                                    ctx.source.sender.sendMessage(Component.text("Team not found", NamedTextColor.RED))
+                                    return@executes 1
+                                }
+
+                            if (!team.acceptAll && !InviteSystem.isPlayerInvitedToTeam(player, team)) {
+                                ctx.source.sender.sendMessage(
+                                    Component.text(
+                                        "You can't join this team",
+                                        NamedTextColor.RED
+                                    )
+                                )
+                                return@executes 1
                             }
-                            sendJoinPlayer(ctx, player, team)
-                            updateSidebars(ctx)
-                            1
+                            if (!team.tryAddPlayerToTeam(player).isSuccess) {
+                                ctx.source.sender.sendMessage(
+                                    Component.text(
+                                        "You can't join this team",
+                                        NamedTextColor.RED
+                                    )
+                                )
+                                return@executes 1
+                            }
+
+                            InviteSystem.rejectInvite(player, team)
+                            sendJoinPlayer(player, team)
+                            updateSidebars()
+                            Command.SINGLE_SUCCESS
                         }
                 )
         )
+
         registerer.register(
             Commands.literal("create")
                 .then(
-                    Commands.argument(
-                        "displayName",
-                        ArgumentTypes.component()
-                    )
-                        .executes(Command { ctx ->
-                            val scoreboard: ServerScoreboard = ctx.getSource().getServer().scoreboard
-                            val displayName: Component =
-                                ComponentArgument.getResolvedComponent(ctx, "displayName")
-                            val name = displayName.string
-                            if (scoreboard.getPlayerTeam(name) != null) throw ADD_DUPLICATE_EXCEPTION.create()
-                            val team: PlayerTeam = scoreboard.addPlayerTeam(name)
-                            team.setDisplayName(displayName)
-                            val teamEntity: Entity = TeamsCommand.teamManager(ctx).getEntity(team)
-                            val playerEntity: Entity = player(ctx).orElseThrow()
-                            TeamManager.forceAddPlayer(teamEntity, playerEntity)
-                            TeamOwner.setTeamOwner(teamEntity, playerEntity)
-                            ctx.getSource().sendSuccess(java.util.function.Supplier {
-                                Component.translatable(
-                                    "commands.team.add.success",
-                                    displayName
+                    Commands.argument("displayName", ArgumentTypes.component())
+                        .executes { ctx ->
+                            val creator = player(ctx) ?: return@executes 1
+                            if (creator.team != null) {
+                                ctx.source.sender.sendMessage(
+                                    Component.text(
+                                        "You already have a team",
+                                        NamedTextColor.RED
+                                    )
                                 )
-                            }, true)
-                            1
-                        })
+                                return@executes 1
+                            }
+
+                            val displayName = ctx.getArgument("displayName", Component::class.java)
+                            val id = idFromDisplayName(displayName)
+                            if (TournamentTeam.getTeamById(id) != null) {
+                                ctx.source.sender.sendMessage(Component.text("Team already exists", NamedTextColor.RED))
+                                return@executes 1
+                            }
+
+                            val team = TournamentTeam.createNewTeam(creator, id, displayName)
+                            ctx.source.sender.sendMessage(
+                                Component.text("Created team ").append(team.displayName)
+                            )
+                            updateSidebars()
+                            Command.SINGLE_SUCCESS
+                        }
                 )
         )
+
         registerer.register(
             Commands.literal("list")
-                .executes { context ->
-                    executeListTeams(
-                        context.source
-                    )
-                }
+                .executes { ctx -> executeListTeams(ctx.source) }
                 .then(
-                    Commands.argument("team", StringArgumentType.string())
+                    Commands.argument<String>("team", StringArgumentType.greedyString())
                         .suggestTeams()
-                        .executes { context ->
+                        .executes { ctx ->
                             executeListMembers(
-                                context.source,
-                                StringArgumentType.getString(context, "team")
+                                ctx.source,
+                                StringArgumentType.getString(ctx, "team")
                             )
                         }
                 )
         )
+
         registerer.register(
             Commands.literal("reject")
                 .then(
-                    Commands.argument(
-                        "player",
-                        EntityArgument.player()
-                    )
-                        .executes(Command { ctx ->
-                            val team: java.util.Optional<Entity> = team(ctx)
-                            if (team.isEmpty) {
-                                ctx.getSource()
-                                    .sendFailure(Component.text("You can't do it because you don't have team"))
-                                return@executes 1
-                            }
-                            val huy: Entity = PlayerManager.Companion.getEntity(EntityArgument.getPlayer(ctx, "player"))
-                            if (!InviteSystem.isPlayerInvitedToTeam(huy, team.get())) {
-                                ctx.getSource()
-                                    .sendFailure(Component.text("You can't do it because this player has no join request to your team"))
-                                return@executes 1
-                            }
-                            InviteSystem.rejectInvite(huy, team.get())
-                            ctx.getSource().sendSuccess(java.util.function.Supplier {
-                                Component.text("You rejected join request of ")
-                                    .append(PlayerManager.Companion.getDisplayName(huy).orElseThrow())
-                            }, false)
-                            PlayerManager.Companion.getServerPlayer(huy)
-                                .ifPresent(java.util.function.Consumer { p: ServerPlayer? ->
-                                    p.sendSystemMessage(
-                                        Component.text("Your join request to team ")
-                                            .append(TeamManager.getPlayerTeam(team.get()).getDisplayName())
-                                            .append(" was rejected")
+                    Commands.argument("player", ArgumentTypes.player())
+                        .executes { ctx ->
+                            val team = checkTeam(ctx) ?: return@executes 1
+                            if (checkOwner(ctx) == null) return@executes 1
+                            val target = ctx.getPlayerArgument("player")
+
+                            if (!InviteSystem.isPlayerInvitedToTeam(target, team)) {
+                                ctx.source.sender.sendMessage(
+                                    Component.text(
+                                        "You can't do it because this player has no join request to your team",
+                                        NamedTextColor.RED
                                     )
-                                })
-                            1
-                        })
+                                )
+                                return@executes 1
+                            }
+
+                            InviteSystem.rejectInvite(target, team)
+                            ctx.source.sender.sendMessage(
+                                Component.text("You rejected join request of ")
+                                    .append(target.displayName)
+                            )
+                            target.player?.sendMessage(
+                                Component.text("Your join request to team ")
+                                    .append(team.displayName)
+                                    .append(Component.text(" was rejected"))
+                            )
+                            Command.SINGLE_SUCCESS
+                        }
                 )
         )
+
         registerer.register(
             Commands.literal("invite")
                 .then(
-                    Commands.argument(
-                        "player",
-                        ArgumentTypes.player()
-                    )
-                        .executes { ctx: CommandContext<CommandSourceStack> ->
+                    Commands.argument("player", ArgumentTypes.player())
+                        .executes { ctx ->
                             val inviter = player(ctx) ?: return@executes 1
                             val invited = ctx.getPlayerArgument("player")
                             if (invited === inviter) {
-                                ctx.getSource()
-                                    .sendFailure(Component.text("You cannot invite yourself"))
+                                ctx.source.sender.sendMessage(
+                                    Component.text(
+                                        "You cannot invite yourself",
+                                        NamedTextColor.RED
+                                    )
+                                )
                                 return@executes 1
                             }
-                            val team = team(ctx)
-                            val teamEntity = team ?: TournamentTeam.createNewTeam(inviter)
-                            InviteSystem.invitePlayerToTeam(invited, teamEntity, 1000)
+
+                            val team = team(ctx) ?: TournamentTeam.createNewTeam(inviter)
+                            InviteSystem.invitePlayerToTeam(invited, team, 1000)
                             invited.player?.sendMessage(
-                                        Component.empty()
-                                            .append(PlayerManager.Companion.getDisplayName(inviter).orElseThrow())
-                                            .append(Component.text(" invites you to team "))
-                                            .append(TeamManager.getPlayerTeam(teamEntity).getDisplayName())
-                                            .append(" ")
-                                            .append(
-                                                Component.text("[Accept]").withStyle(
-                                                    Style.EMPTY.withColor(0x00FF00)
-                                                        .withClickEvent(
-                                                            RunCommand(
-                                                                "/teams join " + TeamManager.getPlayerTeam(
-                                                                    teamEntity
-                                                                ).getName()
-                                                            )
-                                                        )
-                                                )
-                                            )
+                                Component.empty()
+                                    .append(inviter.displayName)
+                                    .append(Component.text(" invites you to team "))
+                                    .append(team.displayName)
+                                    .append(Component.text(" "))
+                                    .append(
+                                        Component.text("[Accept]", NamedTextColor.GREEN)
+                                            .clickEvent(ClickEvent.runCommand("/teams join ${team.id}"))
                                     )
-                                })
-                            ctx.getSource().sendSuccess(java.util.function.Supplier {
-                                Component.text("Invite sent")
-                            }, false)
-                            1
+                            )
+                            ctx.source.sender.sendMessage(Component.text("Invite sent"))
+                            Command.SINGLE_SUCCESS
                         }
                 )
         )
 
         registerer.register(
             Commands.literal("tryLeave")
-                .executes(Command { ctx ->
-                    if (!checkTeam(ctx)) return@executes 1
-                    ctx.getSource().sendSuccess(java.util.function.Supplier {
+                .executes { ctx ->
+                    if (checkTeam(ctx) == null) return@executes 1
+                    ctx.source.sender.sendMessage(
                         Component.text("Are you sure? ")
                             .append(
-                                Component.text("[Leave]").withStyle(ChatFormatting.RED)
-                                    .withStyle(
-                                        Style.EMPTY
-                                            .withHoverEvent(
-                                                HoverEvent.ShowText(
-                                                    Component.text(
-                                                        "Click to leave your team"
-                                                    )
-                                                )
-                                            )
-                                            .withClickEvent(RunCommand("/teams leave"))
-                                    )
+                                Component.text("[Leave]", NamedTextColor.RED)
+                                    .hoverEvent(HoverEvent.showText(Component.text("Click to leave your team")))
+                                    .clickEvent(ClickEvent.runCommand("/teams leave"))
                             )
-                    }, false)
-                    1
-                })
+                    )
+                    Command.SINGLE_SUCCESS
+                }
         )
 
         registerer.register(
             Commands.literal("tryKick")
                 .then(
-                    Commands.argument(
-                        "player",
-                        ArgumentTypes.player()
-                    )
+                    Commands.argument("player", ArgumentTypes.player())
                         .executes { ctx ->
-                            if (!checkTeam(ctx)) return@executes 1
-                            if (!checkOwner(ctx)) return@executes 1
+                            if (checkTeam(ctx) == null) return@executes 1
+                            if (checkOwner(ctx) == null) return@executes 1
+
                             val target = ctx.getPlayerArgument("player")
-                            val nameComp: Component =
-                                PlayerManager.Companion.getDisplayName(target)
-                                    .orElse(Component.text("Unknown"))
-                            val hover = HoverEvent.ShowText(
-                                Component.text("Click to kick ").append(nameComp.copy())
-                                    .append(" from your team")
-                            )
-                            val click: RunCommand =
-                                RunCommand("/teams kick " + PlayerManager.Companion.getName(target).orElse(""))
-                            val action: MutableComponent =
-                                Component.text(" [Kick ").append(nameComp).append(" ]")
-                                    .withStyle(ChatFormatting.RED)
-                                    .withStyle(UnaryOperator { style: Style? ->
-                                        style!!.withHoverEvent(
-                                            hover
-                                        ).withClickEvent(click)
-                                    })
-                            ctx.getSource().sendSuccess(java.util.function.Supplier {
+                            val action = Component.text(" [Kick ", NamedTextColor.RED)
+                                .append(target.displayName)
+                                .append(Component.text(" ]", NamedTextColor.RED))
+                                .hoverEvent(
+                                    HoverEvent.showText(
+                                        Component.text("Click to kick ")
+                                            .append(target.displayName)
+                                            .append(Component.text(" from your team"))
+                                    )
+                                )
+                                .clickEvent(ClickEvent.runCommand("/teams kick ${target.name}"))
+
+                            ctx.source.sender.sendMessage(
                                 Component.text("Are you sure? ").append(action)
-                            }, false)
-                            1
+                            )
+                            Command.SINGLE_SUCCESS
                         }
                 )
         )
@@ -475,22 +284,21 @@ object TeamsCommand {
                 .then(
                     Commands.literal("name")
                         .then(
-                            Commands.argument(
-                                "name",
-                                ArgumentTypes.component()
-                            )
+                            Commands.argument("name", ArgumentTypes.component())
                                 .executes { ctx ->
-                                    if (!checkTeam(ctx)) return@executes 1
-                                    if (!checkOwner(ctx)) return@executes 1
-                                    if (!team(ctx).changeTeamName(
-                                            ctx.getArgument("name", Component::class.java)
+                                    val team = checkTeam(ctx) ?: return@executes 1
+                                    if (checkOwner(ctx) == null) return@executes 1
+                                    val name = ctx.getArgument("name", Component::class.java)
+
+                                    if (!team.changeTeamName(name)) {
+                                        ctx.source.sender.sendMessage(
+                                            Component.text("Team with this name already exists", NamedTextColor.RED)
                                         )
-                                    ) {
-                                        ctx.getSource()
-                                            .sendFailure(Component.text("Team with this name already exists"))
+                                        return@executes 1
                                     }
-                                    updateSidebars(ctx)
-                                    1
+
+                                    updateSidebars()
+                                    Command.SINGLE_SUCCESS
                                 }
                         )
                 )
@@ -499,156 +307,237 @@ object TeamsCommand {
         registerer.register(
             Commands.literal("acceptAll")
                 .then(
-                    Commands.argument<Boolean?>("acceptAll", BoolArgumentType.bool())
-                        .executes(Command { ctx ->
-                            if (!checkTeam(ctx)) return@executes 1
-                            if (!checkOwner(ctx)) return@executes 1
-                            val t: Entity = team(ctx).orElseThrow()
-                            TeamSettings.Companion.getSettings(t).acceptAll = BoolArgumentType.getBool(ctx, "acceptAll")
-                            ctx.getSource().sendSuccess(java.util.function.Supplier {
-                                Component.text(
-                                    "Your team now accepts all: " + TeamSettings.Companion.getSettings(
-                                        t
-                                    ).acceptAll
-                                )
-                            }, false)
-                            1
-                        })
+                    Commands.argument<Boolean>("acceptAll", BoolArgumentType.bool())
+                        .executes { ctx ->
+                            val team = checkTeam(ctx) ?: return@executes 1
+                            if (checkOwner(ctx) == null) return@executes 1
+
+                            team.acceptAll = BoolArgumentType.getBool(ctx, "acceptAll")
+                            ctx.source.sender.sendMessage(
+                                Component.text("Your team now accepts all: ${team.acceptAll}")
+                            )
+                            Command.SINGLE_SUCCESS
+                        }
                 )
         )
 
         registerer.register(
             Commands.literal("kick")
                 .then(
-                    Commands.argument(
-                        "player",
-                        ArgumentTypes.player()
-                    )
+                    Commands.argument("player", ArgumentTypes.player())
                         .executes { ctx ->
-                            val t = checkTeam(ctx) ?: return@executes 1
+                            val team = checkTeam(ctx) ?: return@executes 1
                             if (checkOwner(ctx) == null) return@executes 1
+
                             val target = ctx.getPlayerArgument("player")
-                            val result = t.tryKickPlayerFromTeam(target)
+                            val result = team.tryKickPlayerFromTeam(target)
                             if (!result.isSuccess) {
-                                ctx.getSource()
-                                    .sendFailure(Component.text("Unable to kick player"))
+                                ctx.source.sender.sendMessage(
+                                    Component.text(
+                                        "Unable to kick player",
+                                        NamedTextColor.RED
+                                    )
+                                )
                                 return@executes 1
                             }
-                            target.player?.sendMessage(
-                                Component.text("You were kicked from team")
-                            )
-                            t.players.forEach { member ->
+
+                            target.player?.sendMessage(Component.text("You were kicked from team"))
+                            team.players.forEach { member ->
                                 if (member !== target) {
-                                    PlayerManager.Companion.getServerPlayer(member)
-                                        .ifPresent(java.util.function.Consumer { p: ServerPlayer? ->
-                                            p.sendSystemMessage(
-                                                Component.empty()
-                                                    .append(
-                                                        PlayerManager.Companion.getDisplayName(target)
-                                                            .orElse(Component.text("Unknown"))
-                                                    )
-                                                    .append(" was kicked from team")
-                                            )
-                                        })
+                                    member.player?.sendMessage(
+                                        Component.empty()
+                                            .append(target.displayName)
+                                            .append(Component.text(" was kicked from team"))
+                                    )
                                 }
                             }
-                            updateSidebars(ctx)
-                            1
+                            updateSidebars()
+                            Command.SINGLE_SUCCESS
                         }
                 )
         )
+
         registerer.register(
             Commands.literal("removeAll")
-                .requires(java.util.function.Predicate { commandSourceStack: CommandSourceStack? ->
-                    commandSourceStack!!.hasPermission(
-                        4
-                    )
-                })
+                .requires { source -> source.sender.hasPermission("minecraft.command.team") }
                 .executes { ctx ->
-                    for (team in TournamentTeam.getAllTeams()) {
-                        TournamentTeam.removeTeam(team)
-                    }
-                    ctx.getSource().sendSuccess(
-                        java.util.function.Supplier { Component.text("All teams removed") },
-                        true
-                    )
+                    TournamentTeam.getAllTeams().toList().forEach(TournamentTeam::removeTeam)
+                    ctx.source.sender.sendMessage(Component.text("All teams removed"))
                     Command.SINGLE_SUCCESS
                 }
         )
     }
 
-    private fun executeListMembers(source: CommandSourceStack, teamId: String): Int {
-        val collection: MutableCollection<String?> = teamId.getPlayers()
-        if (collection.isEmpty()) {
-            source.sendSuccess(java.util.function.Supplier {
-                Component.translatable(
-                    "commands.team.list.members.empty",
-                    teamId.getDisplayName()
+    private fun myTeamMessage(player: TournamentPlayer, team: TournamentTeam): Component {
+        val isOwner = team.owner == player
+        val ans = Component.text()
+            .append(Component.text("\n===============\n", NamedTextColor.GRAY))
+            .append(Component.text("Your team:\n"))
+            .append(
+                Component.text("Name: ", NamedTextColor.AQUA)
+                    .decorate(TextDecoration.ITALIC)
+            )
+            .append(team.displayName)
+
+        if (isOwner) {
+            ans.append(Component.text(" "))
+                .append(
+                    Component.text("[Edit]", NamedTextColor.GRAY)
+                        .clickEvent(ClickEvent.suggestCommand("/teams edit name ${team.id}"))
+                        .hoverEvent(HoverEvent.showText(Component.text("Click to edit name of your team")))
                 )
-            }, false)
-        } else {
-            source.sendSuccess(
-                java.util.function.Supplier {
-                    Component.translatable(
-                        "commands.team.list.members.success",
-                        teamId.getDisplayName(),
-                        collection.size,
-                        ComponentUtils.formatList(collection)
-                    )
-                }, false
+        }
+
+        ans.append(Component.text("\n"))
+            .append(Component.text("Members: \n", NamedTextColor.DARK_AQUA).decorate(TextDecoration.BOLD))
+            .append(memberLine(player, team, isSelf = true, canKick = false))
+
+        team.players.forEach { member ->
+            if (member !== player) {
+                ans.append(memberLine(member, team, isSelf = false, canKick = isOwner))
+            }
+        }
+
+        ans.append(acceptAllLine(team, isOwner))
+            .append(Component.text("\n===============", NamedTextColor.GRAY))
+
+        return ans.build()
+    }
+
+    private fun memberLine(
+        player: TournamentPlayer,
+        team: TournamentTeam,
+        isSelf: Boolean,
+        canKick: Boolean
+    ): Component {
+        val line = Component.text()
+            .append(Component.text(" "))
+            .append(player.displayName)
+
+        if (team.owner == player) {
+            line.append(
+                Component.text(if (isSelf) " (Owner, You) " else " (Owner) ", NamedTextColor.GOLD)
+                    .decorate(TextDecoration.ITALIC)
+            )
+        } else if (isSelf) {
+            line.append(
+                Component.text(" (You) ", NamedTextColor.GOLD)
+                    .decorate(TextDecoration.ITALIC)
             )
         }
 
-        return collection.size
+        if (isSelf) {
+            line.append(
+                Component.text("[Leave]", NamedTextColor.RED)
+                    .clickEvent(ClickEvent.runCommand("/teams tryLeave"))
+                    .hoverEvent(HoverEvent.showText(Component.text("Click to leave your team")))
+            )
+        } else if (canKick) {
+            line.append(
+                Component.text(" [Kick]", NamedTextColor.RED)
+                    .clickEvent(ClickEvent.runCommand("/teams tryKick ${player.name}"))
+                    .hoverEvent(
+                        HoverEvent.showText(
+                            Component.text("Click to kick ")
+                                .append(player.displayName)
+                                .append(Component.text(" from your team"))
+                        )
+                    )
+            )
+        }
+
+        return line.append(Component.text("\n")).build()
+    }
+
+    private fun acceptAllLine(team: TournamentTeam, isOwner: Boolean): Component {
+        val line = Component.text()
+            .append(Component.text("Accept all: ", NamedTextColor.AQUA))
+            .append(
+                Component.text(
+                    team.acceptAll.toString(),
+                    if (team.acceptAll) NamedTextColor.GREEN else NamedTextColor.DARK_GRAY
+                )
+            )
+            .hoverEvent(
+                HoverEvent.showText(
+                    if (team.acceptAll) {
+                        Component.text("Your team accepts all players; invites and requests are not needed")
+                    } else {
+                        Component.text("Your team accepts players only from invites or requests")
+                    }
+                )
+            )
+
+        if (isOwner) {
+            line.append(
+                Component.text(" [Change]", NamedTextColor.GRAY)
+                    .clickEvent(ClickEvent.runCommand("/teams acceptAll ${!team.acceptAll}"))
+                    .hoverEvent(HoverEvent.showText(Component.text("Click to change accept-all mode")))
+            )
+        }
+
+        return line.build()
+    }
+
+    private fun executeListMembers(source: CommandSourceStack, teamId: String): Int {
+        val team = TournamentTeam.getTeamById(teamId)
+        if (team == null) {
+            source.sender.sendMessage(Component.text("Team not found", NamedTextColor.RED))
+            return 0
+        }
+
+        if (team.players.isEmpty()) {
+            source.sender.sendMessage(
+                Component.text("Team ")
+                    .append(team.displayName)
+                    .append(Component.text(" has no members"))
+            )
+        } else {
+            source.sender.sendMessage(
+                Component.text("Team ")
+                    .append(team.displayName)
+                    .append(Component.text(" has ${team.players.size} members: "))
+                    .append(formatList(team.players.map { it.displayName }))
+            )
+        }
+
+        return team.players.size
     }
 
     private fun executeListTeams(source: CommandSourceStack): Int {
-        val collection =
-            source.server.scoreboard.playerTeams
-        if (collection.isEmpty()) {
-            source.sendSuccess(
-                { Component.translatable("commands.team.list.teams.empty") },
-                false
-            )
+        val teams = TournamentTeam.getAllTeams()
+        if (teams.isEmpty()) {
+            source.sender.sendMessage(Component.text("There are no teams"))
         } else {
-            source.sendSuccess({
-                Component.translatable(
-                    "commands.team.list.teams.success",
-                    collection.size,
-                    ComponentUtils.formatList<PlayerTeam?>(
-                        collection,
-                        java.util.function.Function { obj: PlayerTeam? -> obj.getDisplayName() })
-                )
-            }, false)
+            source.sender.sendMessage(
+                Component.text("There are ${teams.size} teams: ")
+                    .append(formatList(teams.map { it.displayName }))
+            )
         }
 
-        return collection.size
+        return teams.size
     }
 
-    private fun sendJoinPlayer(
-        ctx: CommandContext<CommandSourceStack>,
-        player: TournamentPlayer,
-        team: TournamentTeam
-    ) {
+    private fun sendJoinPlayer(player: TournamentPlayer, team: TournamentTeam) {
         player.player?.sendMessage(
             Component.text("You joined team ")
-                .append(team.team.displayName())
+                .append(team.displayName)
         )
-        for (player1 in team.players) {
-            if (player1 === player) continue
-            player1.player?.sendMessage(
-                Component.empty()
-                    .append(player.displayName)
-                    .append(Component.text(" joined your team"))
-            )
+        team.players.forEach { member ->
+            if (member !== player) {
+                member.player?.sendMessage(
+                    Component.empty()
+                        .append(player.displayName)
+                        .append(Component.text(" joined your team"))
+                )
+            }
         }
     }
-
 
     private fun checkTeam(ctx: CommandContext<CommandSourceStack>): TournamentTeam? {
         val team = team(ctx)
         if (team == null) {
-            ctx.source.sender.sendMessage(Component.text("You're not on the team."))
+            ctx.source.sender.sendMessage(Component.text("You're not on the team.", NamedTextColor.RED))
             return null
         }
         return team
@@ -658,8 +547,9 @@ object TeamsCommand {
         val team = team(ctx)
         val player = player(ctx)
         if (team == null || player == null) return null
-        if (team.owner == player)
-            return player
+        if (team.owner == player) return player
+
+        ctx.source.sender.sendMessage(Component.text("Only team owner can do this", NamedTextColor.RED))
         return null
     }
 
@@ -669,19 +559,20 @@ object TeamsCommand {
     }
 
     private fun team(ctx: CommandContext<CommandSourceStack>): TournamentTeam? {
-        val player = ctx.source.executor as? Player ?: return null
-        return TournamentPlayer.get(player).team
+        return player(ctx)?.team
     }
 
-    private fun updateSidebars(ctx: CommandContext<CommandSourceStack>) {
-        val tournament = Tournament.get(ctx.source.server)
-        tournament?.updateSidebars()
+    private fun updateSidebars() {
+        Tournament.get(nmsServer())?.updateSidebars()
+    }
+
+    private fun nmsServer(): MinecraftServer {
+        return (Bukkit.getServer() as CraftServer).server
     }
 
     private fun <S, T> RequiredArgumentBuilder<S, T>.suggestTeams(): RequiredArgumentBuilder<S, T> {
-        return suggests { context, builder ->
-            for (team in TournamentTeam.getAllTeams())
-                builder.suggest(team.id)
+        return suggests { _, builder ->
+            TournamentTeam.getAllTeams().forEach { builder.suggest(it.id) }
             builder.buildFuture()
         }
     }
@@ -689,7 +580,22 @@ object TeamsCommand {
     private fun CommandContext<CommandSourceStack>.getPlayerArgument(name: String): TournamentPlayer {
         return TournamentPlayer.get(
             getArgument(name, PlayerSelectorArgumentResolver::class.java)
-                .resolve(source).single()
+                .resolve(source)
+                .single()
         )
+    }
+
+    private fun idFromDisplayName(displayName: Component): String {
+        return PlainTextComponentSerializer.plainText().serialize(displayName)
+            .ifBlank { "team" }
+    }
+
+    private fun formatList(components: List<Component>): Component {
+        val builder = Component.text()
+        components.forEachIndexed { index, component ->
+            if (index > 0) builder.append(Component.text(", "))
+            builder.append(component)
+        }
+        return builder.build()
     }
 }
