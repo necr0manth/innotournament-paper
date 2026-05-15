@@ -1,7 +1,7 @@
 package dev.necr0manthre.innotournament.teams.invites
 
-import dev.necr0manthre.innotournament.tournament.components.TournamentPlayer
-import dev.necr0manthre.innotournament.tournament.components.TournamentTeam
+import dev.necr0manthre.innotournament.tournament.TournamentPlayer
+import dev.necr0manthre.innotournament.tournament.TournamentTeam
 
 class Invite(
     val team: TournamentTeam,
