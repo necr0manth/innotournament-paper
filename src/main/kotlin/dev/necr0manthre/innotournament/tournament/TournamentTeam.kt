@@ -1,10 +1,13 @@
-package dev.necr0manthre.innotournament.tournament.components
+package dev.necr0manthre.innotournament.tournament
 
 import dev.necr0manthre.innotournament.teams.PlayerJoinResult
 import dev.necr0manthre.innotournament.teams.PlayerKickResult
-import dev.necr0manthre.innotournament.tournament.Tournament
+import dev.necr0manthre.innotournament.teams.invites.InviteSystem
+import dev.necr0manthre.innotournament.teams.invites.Invites
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
+import org.bukkit.advancement.Advancement
+import org.bukkit.advancement.AdvancementProgress
 import java.lang.ref.WeakReference
 
 class TournamentTeam private constructor(
@@ -19,6 +22,8 @@ class TournamentTeam private constructor(
     var displayName: Component = displayName
         private set
     val players: MutableList<TournamentPlayer> = mutableListOf()
+    val advancements: MutableMap<Advancement, AdvancementProgress> = mutableMapOf()
+    val invites = InviteSystem.createInvites()
 
     fun tryKickPlayerFromTeam(player: TournamentPlayer): PlayerKickResult {
         if (player.team !== this) return PlayerKickResult.NOT_IN_TEAM

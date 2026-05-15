@@ -1,6 +1,7 @@
-package dev.necr0manthre.innotournament.tournament.components
+package dev.necr0manthre.innotournament.tournament
 
-import dev.necr0manthre.innotournament.tournament.Tournament
+import dev.necr0manthre.innotournament.teams.invites.InviteSystem
+import dev.necr0manthre.innotournament.teams.invites.Invites
 import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.OfflinePlayer
@@ -13,6 +14,7 @@ class TournamentPlayer private constructor(val uuid: UUID) {
     var lives: Int = 0
     var tournament: WeakReference<Tournament>? = null
     var team: TournamentTeam? = null
+    val invites = InviteSystem.createInvites()
 
     val offlinePlayer: OfflinePlayer
         get() = Bukkit.getOfflinePlayer(uuid)

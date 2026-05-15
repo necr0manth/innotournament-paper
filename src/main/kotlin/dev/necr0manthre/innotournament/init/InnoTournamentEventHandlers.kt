@@ -4,7 +4,7 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException
 import dev.necr0manthre.innotournament.Innotournament
 import dev.necr0manthre.innotournament.teams.core.TeamManager
 import dev.necr0manthre.innotournament.tournament.Tournament
-import dev.necr0manthre.innotournament.tournament.components.TournamentPlayer
+import dev.necr0manthre.innotournament.tournament.TournamentPlayer
 import dev.necr0manthre.innotournament.tournament.events.ITournamentEventListener
 import dev.necr0manthre.innotournament.tournament.events.event_data.ISourcePlayerProvider
 import dev.necr0manthre.innotournament.tournament.events.event_data.ITeamProvider
@@ -101,7 +101,7 @@ interface InnoTournamentEventHandlers {
                                 Consumer { team: Entity? ->
                                     tournament!!.addScores(
                                         team,
-                                        scores!![TournamentPlayer.Companion.get(playerProvider.getSourcePlayer()).lives]!!.toInt()
+                                        scores!![TournamentPlayer.get(playerProvider.getSourcePlayer()).lives]!!.toInt()
                                             .toDouble()
                                     )
                                 })

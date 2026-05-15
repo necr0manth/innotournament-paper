@@ -1,12 +1,22 @@
 package dev.necr0manthre.innotournament.init
 
-import dev.architectury.event.EventResult
+import dev.necr0manthre.innotournament.tournament.Tournament
+import dev.necr0manthre.innotournament.tournament.events.AbstractTournamentEvent
+import dev.necr0manthre.innotournament.tournament.events.LambdaTournamentEvent
+import dev.necr0manthre.innotournament.tournament.events.events.TimeEvent
+import dev.necr0manthre.innotournament.tournament.events.parsing.IParser
+import dev.necr0manthre.innotournament.tournament.events.parsing.TournamentEventParserRegistry
+import dev.necr0manthre.innotournament.tournament.events.parsing.parsers.OneArgumentParser
+import dev.necr0manthre.innotournament.tournament.events.parsing.parsers.SimpleDecoder
+import org.apache.logging.log4j.util.TriConsumer
+import java.util.function.Consumer
+import kotlin.concurrent.atomics.AtomicReference
 
 interface InnoTournamentEvents {
     companion object {
-        private fun <E : AbstractTournamentEvent<*>?, T : IParser<kotlin.String?, E?>?> register(parser: T?): T? {
-            return TournamentEventParserRegistry.INSTANCE.register<kotlin.String?, E?, T?>(
-                kotlin.String::class.java,
+        private fun <E : AbstractTournamentEvent<*>?, T : IParser<String, E>?> register(parser: T): T? {
+            return TournamentEventParserRegistry.INSTANCE.register<String?, E?, T?>(
+                String::class.java,
                 parser
             )
         }
@@ -24,13 +34,13 @@ interface InnoTournamentEvents {
                 SimpleDecoder<AbstractTournamentEvent<*>?>(
                     "onPrepare",
                     java.util.function.Supplier {
-                        LambdaTournamentEvent<kotlin.Any?, java.util.function.Consumer<kotlin.Any?>?>(
-                            org.apache.logging.log4j.util.TriConsumer { tournament: Tournament?, callback: java.util.function.Consumer<kotlin.Any?>?, additionalData: AtomicReference<java.util.function.Consumer<kotlin.Any?>?>? ->
+                        LambdaTournamentEvent<Any?, Consumer<Any?>?>(
+                            TriConsumer { tournament: Tournament?, callback: Consumer<Any?>?, additionalData: AtomicReference<Consumer<Any?>?>? ->
                                 tournament.onPrepare.register(
                                     callback
                                 )
                             },
-                            org.apache.logging.log4j.util.TriConsumer { tournament: Tournament?, callback: java.util.function.Consumer<kotlin.Any?>?, data: java.util.function.Consumer<kotlin.Any?>? ->
+                            TriConsumer { tournament: Tournament?, callback: Consumer<Any?>?, data: Consumer<Any?>? ->
                                 tournament.onStart.unregister(callback)
                             })
                     })
