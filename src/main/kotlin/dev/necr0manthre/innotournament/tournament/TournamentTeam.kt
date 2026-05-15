@@ -3,7 +3,6 @@ package dev.necr0manthre.innotournament.tournament
 import dev.necr0manthre.innotournament.teams.PlayerJoinResult
 import dev.necr0manthre.innotournament.teams.PlayerKickResult
 import dev.necr0manthre.innotournament.teams.invites.InviteSystem
-import dev.necr0manthre.innotournament.teams.invites.Invites
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.advancement.Advancement

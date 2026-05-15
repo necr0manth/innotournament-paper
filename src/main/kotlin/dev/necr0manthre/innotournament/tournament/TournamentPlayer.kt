@@ -1,13 +1,12 @@
 package dev.necr0manthre.innotournament.tournament
 
 import dev.necr0manthre.innotournament.teams.invites.InviteSystem
-import dev.necr0manthre.innotournament.teams.invites.Invites
 import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.OfflinePlayer
 import org.bukkit.entity.Player
 import java.lang.ref.WeakReference
-import java.util.UUID
+import java.util.*
 
 class TournamentPlayer private constructor(val uuid: UUID) {
     var player: Player? = null
