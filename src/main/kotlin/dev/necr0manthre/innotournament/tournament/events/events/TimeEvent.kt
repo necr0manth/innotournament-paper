@@ -1,30 +1,24 @@
 package dev.necr0manthre.innotournament.tournament.events.events
 
-import dev.architectury.event.events.common.TickEvent
-import java.util.function.Consumer
+import com.destroystokyo.paper.event.server.ServerTickEndEvent
+import dev.necr0manthre.innotournament.tournament.Tournament
+import dev.necr0manthre.innotournament.tournament.events.BukkitEventBasedTournamentEvent
 
-class TimeEvent(private val time: Long) : AbstractTournamentEvent<Any?>() {
+class TimeEvent(private val time: Long, tournament: Tournament) :
+    BukkitEventBasedTournamentEvent<ServerTickEndEvent, Unit>(
+        ServerTickEndEvent::class,
+        ServerTickEndEvent::getHandlerList,
+        tournament
+    ) {
     private var completed = false
-    private var callback: Consumer<Any?>? = null
-    private var tournament: Tournament? = null
 
-    var tick: TickEvent.Server = TickEvent.Server { server: MinecraftServer? -> this.tick(server) }
-
-    override fun subscribe(tournament: Tournament, callback: Consumer<Any?>) {
-        this.tournament = tournament
-        this.callback = callback
-        completed = false
-        TickEvent.SERVER_PRE.register(tick)
-    }
-
-    override fun remove() {
-        TickEvent.SERVER_PRE.unregister(tick)
-    }
-
-    private fun tick(server: MinecraftServer?) {
-        if (tournament.getElapsedTime() >= time && !completed) {
+    override fun handle(
+        event: ServerTickEndEvent,
+        callback: (Unit) -> Unit
+    ) {
+        if (tournament.elapsedTime >= time && !completed) {
             completed = true
-            callback!!.accept(null)
+            callback(Unit)
         }
     }
 }

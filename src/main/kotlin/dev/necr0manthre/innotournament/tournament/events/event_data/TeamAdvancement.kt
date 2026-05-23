@@ -1,9 +1,9 @@
 package dev.necr0manthre.innotournament.tournament.events.event_data
 
-import dev.dominion.ecs.api.Entity
+import dev.necr0manthre.innotournament.tournament.TournamentTeam
+import org.bukkit.advancement.Advancement
 
-@Data
-class TeamAdvancement : ITeamProvider {
-    private val team: Entity? = null
-    private val advancement: AdvancementHolder? = null
-}
+data class TeamAdvancement(
+    override val team: TournamentTeam?,
+    val advancement: Advancement? = null
+) : ITeamProvider

@@ -1,28 +1,41 @@
 package dev.necr0manthre.innotournament.tournament.events
 
 import dev.necr0manthre.innotournament.tournament.Tournament
-import java.util.function.Consumer
 
-abstract class AbstractTournamentEvent<T> {
-    private val listeners: MutableList<ITournamentEventListener<T?>?> = ArrayList<ITournamentEventListener<T?>?>()
+abstract class AbstractTournamentEvent<T>(tournament: Tournament) {
+    var _tournament: Tournament? = tournament
+        private set
+    val tournament
+        get() = _tournament ?: error("Event is already removed")
+    private val listeners: MutableList<ITournamentEventListener<T>> = mutableListOf()
 
-    fun addListener(listener: ITournamentEventListener<T?>?) {
-        listeners.add(listener)
+    protected val commonCallback: (T) -> Unit = { event -> notifyListeners(event) }
+    fun addListener(listener: ITournamentEventListener<T>) {
+        synchronized(listeners) {
+            listeners.add(listener)
+        }
     }
 
-    fun removeListener(listener: ITournamentEventListener<T?>?) {
-        listeners.remove(listener)
+    fun removeListener(listener: ITournamentEventListener<T>) {
+        synchronized(listeners) {
+            listeners.remove(listener)
+        }
     }
 
-    private fun notifyListeners(tournament: Tournament?, value: T?) {
-        listeners.forEach(Consumer { listener: ITournamentEventListener<T?>? -> listener!!.listen(tournament, value) })
+    private fun notifyListeners(value: T) {
+        synchronized(this) {
+            listeners.forEach { it.listen(tournament, value) }
+        }
     }
 
-    fun subscribe(tournament: Tournament?) {
-        subscribe(tournament, Consumer { event: T? -> notifyListeners(tournament, event) })
+    open fun remove() {
+        unsubscribe()
+        _tournament = null
+        listeners.clear()
     }
 
-    protected abstract fun subscribe(tournament: Tournament?, callback: Consumer<T?>?)
+    protected abstract fun subscribe()
 
-    abstract fun remove()
+    protected abstract fun unsubscribe()
+
 }

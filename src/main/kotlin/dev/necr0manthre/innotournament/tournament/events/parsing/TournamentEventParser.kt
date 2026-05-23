@@ -1,9 +1,9 @@
 package dev.necr0manthre.innotournament.tournament.events.parsing
 
-import dev.necr0manthre.innotournament.tournament.events.AbstractTournamentEvent
+import dev.necr0manthre.innotournament.tournament.events.ITournamentEventFactory
 
 object TournamentEventParser {
-    fun parse(data: Any): AbstractTournamentEvent<*>? {
-        return IParser.Companion.parse<AbstractTournamentEvent<*>?, Any?>(TournamentEventParserRegistry.INSTANCE, data)
+    fun parse(data: Any): ITournamentEventFactory<*>? {
+        return IParser.parse(TournamentEventParserRegistry, data)
     }
 }

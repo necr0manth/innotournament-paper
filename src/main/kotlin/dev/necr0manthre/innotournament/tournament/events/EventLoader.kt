@@ -7,34 +7,29 @@ import dev.necr0manthre.innotournament.tournament.events.parsing.TournamentEvent
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.Map
-import java.util.Set
-import java.util.function.Consumer
 
 object EventLoader {
-    fun loadEvents(json: JsonElement): MutableMap<AbstractTournamentEvent<*>?, MutableSet<ITournamentEventListener<*>?>?> {
-        val map = HashMap<AbstractTournamentEvent<*>?, MutableSet<ITournamentEventListener<*>?>?>()
+    fun loadEvents(json: JsonElement): Map<ITournamentEventFactory<*>, List<ITournamentEventListener<*>>> {
+        val map = mutableMapOf<ITournamentEventFactory<*>, List<ITournamentEventListener<*>>>()
         for (line in json.getAsJsonObject().entrySet()) {
-            val event = TournamentEventParser.parse(line.key)
-            if (line.value.isJsonPrimitive()) map.put(
-                event,
-                Set.of<ITournamentEventListener<*>?>(TournamentEventHandlerParser.parse(line.value.getAsString()))
-            )
+            val event = TournamentEventParser.parse(line.key) ?: error("")
+            if (line.value.isJsonPrimitive) map[event] =
+                listOf(TournamentEventHandlerParser.parse(line.value.asString) ?: error(""))
             else {
-                val handlers: MutableSet<ITournamentEventListener<*>?> = HashSet<ITournamentEventListener<*>?>()
-                line.value.getAsJsonArray()
-                    .forEach(Consumer { e: JsonElement? -> handlers.add(TournamentEventHandlerParser.parse(e!!.getAsString())) })
-                map.put(event, handlers)
+                map[event] = buildList {
+                    line.value.getAsJsonArray()
+                        .forEach { add(TournamentEventHandlerParser.parse(it.asString) ?: error("")) }
+                }
             }
         }
         return map
     }
 
-    fun loadEvents(path: Path): MutableMap<AbstractTournamentEvent<*>?, MutableSet<ITournamentEventListener<*>?>?> {
-        try {
-            return loadEvents(JsonParser.parseReader(Files.newBufferedReader(path)))
+    fun loadEvents(path: Path): Map<ITournamentEventFactory<*>, List<ITournamentEventListener<*>>> {
+        return try {
+            loadEvents(JsonParser.parseReader(Files.newBufferedReader(path)))
         } catch (e: IOException) {
-            return Map.of<AbstractTournamentEvent<*>?, MutableSet<ITournamentEventListener<*>?>?>()
+            mapOf()
         }
     }
 }

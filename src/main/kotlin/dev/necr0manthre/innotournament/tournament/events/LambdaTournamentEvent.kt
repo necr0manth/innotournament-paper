@@ -1,28 +1,19 @@
 package dev.necr0manthre.innotournament.tournament.events
 
 import dev.necr0manthre.innotournament.tournament.Tournament
-import org.apache.logging.log4j.util.TriConsumer
-import java.util.concurrent.atomic.AtomicReference
-import java.util.function.Consumer
 
 class LambdaTournamentEvent<T, V>(
-    private val subscribeAction: TriConsumer<Tournament?, Consumer<T?>?, AtomicReference<V?>?>,
-    private val removeAction: TriConsumer<Tournament?, Consumer<T?>?, V?>
-) : AbstractTournamentEvent<T?>() {
-    private val reference = AtomicReference<V?>()
-    private var tournament: Tournament? = null
-    private var callback: Consumer<T?>? = null
-    private var subscribed = false
+    private val subscribeAction: (Tournament, (T) -> Unit) -> V,
+    private val unsubscribeAction: (Tournament, (T) -> Unit, V) -> Unit,
+    tournament: Tournament
+) : AbstractTournamentEvent<T>(tournament) {
+    private var subscription: V? = null
 
-    override fun subscribe(tournament: Tournament?, callback: Consumer<T?>?) {
-        this.tournament = tournament
-        this.callback = callback
-        subscribeAction.accept(tournament, callback, reference)
-        subscribed = true
+    override fun subscribe() {
+        subscription = subscribeAction(tournament, commonCallback)
     }
 
-    override fun remove() {
-        if (subscribed) removeAction.accept(tournament, callback, reference.get())
-        subscribed = false
+    override fun unsubscribe() {
+        subscription?.let { unsubscribeAction(tournament, commonCallback, it) }
     }
 }

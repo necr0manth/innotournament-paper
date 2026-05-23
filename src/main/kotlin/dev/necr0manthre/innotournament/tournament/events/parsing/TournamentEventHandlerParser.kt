@@ -4,8 +4,8 @@ import dev.necr0manthre.innotournament.tournament.events.ITournamentEventListene
 
 object TournamentEventHandlerParser {
     fun parse(data: Any): ITournamentEventListener<*>? {
-        return IParser.Companion.parse<ITournamentEventListener<*>?, Any?>(
-            TournamentEventHandlerParserRegistry.INSTANCE,
+        return IParser.parse(
+            TournamentEventHandlerParserRegistry,
             data
         )
     }

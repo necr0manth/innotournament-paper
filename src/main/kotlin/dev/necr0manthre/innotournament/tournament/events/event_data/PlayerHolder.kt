@@ -1,20 +1,9 @@
 package dev.necr0manthre.innotournament.tournament.events.event_data
 
-import dev.dominion.ecs.api.Entity
+import dev.necr0manthre.innotournament.tournament.TournamentPlayer
 
-@Data
-class PlayerHolder : ISourcePlayerProvider, ITargetPlayerProvider, ITeamProvider {
-    private val player: Entity? = null
-
-    override fun getSourcePlayer(): Entity {
-        return player
-    }
-
-    override fun getTargetPlayer(): Entity {
-        return player
-    }
-
-    override fun getTeam(): Entity? {
-        return TeamManager.Companion.getPlayersTeam(player).orElse(null)
-    }
+data class PlayerHolder(val player: TournamentPlayer) : ISourcePlayerProvider, ITargetPlayerProvider, ITeamProvider {
+    override val sourcePlayer = player
+    override val targetPlayer = player
+    override val team = player.team
 }

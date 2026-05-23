@@ -1,7 +1,7 @@
 package dev.necr0manthre.innotournament.tournament.events.event_data
 
-import dev.dominion.ecs.api.Entity
+import dev.necr0manthre.innotournament.tournament.TournamentTeam
 
 interface ITeamProvider {
-    val team: Entity?
+    val team: TournamentTeam?
 }

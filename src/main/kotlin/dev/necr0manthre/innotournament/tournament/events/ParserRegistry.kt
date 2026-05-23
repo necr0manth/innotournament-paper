@@ -1,16 +1,17 @@
 package dev.necr0manthre.innotournament.tournament.events
 
 import dev.necr0manthre.innotournament.tournament.events.parsing.IParser
+import kotlin.reflect.KClass
 
 open class ParserRegistry<O> {
-    private val registry: MutableMap<Class<*>, MutableSet<IParser<*, out O>>> = mutableMapOf()
+    private val registry: MutableMap<KClass<*>, MutableSet<IParser<*, O>>> = mutableMapOf()
 
-    fun <T, E : O?, P : IParser<T?, E?>?> register(clazz: Class<T?>?, parser: P?): P? {
-        registry.computeIfAbsent(clazz) { k: java.lang.Class<*>? -> HashSet<IParser<*, out O?>?>() }!!.add(parser)
+    fun <T : Any, E : O, P : IParser<T, E>> register(clazz: KClass<T>, parser: P): P {
+        registry.computeIfAbsent(clazz) { _ -> mutableSetOf() }.add(parser)
         return parser
     }
 
-    fun <T> getParsers(clazz: Class<T?>?): MutableSet<IParser<T, out O>> {
-        return registry.computeIfAbsent(clazz) { k: Class<*>? -> HashSet<IParser<*, out O?>?>() } as Any as MutableSet<IParser<T?, out O?>?>
+    fun <T : Any> getParsers(clazz: KClass<out T>): MutableSet<IParser<T, O>> {
+        return registry.computeIfAbsent(clazz) { k -> mutableSetOf() } as MutableSet<IParser<T, O>>
     }
 }
