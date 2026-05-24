@@ -1,8 +1,6 @@
 package dev.necr0manthre.innotournament.init
 
-import com.mojang.brigadier.exceptions.CommandSyntaxException
 import dev.necr0manthre.innotournament.Innotournament
-import dev.necr0manthre.innotournament.tournament.Tournament
 import dev.necr0manthre.innotournament.tournament.events.ITournamentEventListener
 import dev.necr0manthre.innotournament.tournament.events.event_data.ISourcePlayerProvider
 import dev.necr0manthre.innotournament.tournament.events.event_data.ITeamProvider
@@ -13,7 +11,6 @@ import dev.necr0manthre.innotournament.tournament.events.parsing.parsers.MultiAr
 import dev.necr0manthre.innotournament.tournament.events.parsing.parsers.OneArgumentParser
 import dev.necr0manthre.innotournament.tournament.events.parsing.parsers.SimpleDecoder
 import dev.necr0manthre.innotournament.tournament.events.parsing.parsers.TwoArgumentParser
-import net.minecraft.server.permissions.LevelBasedPermissionSet
 import org.bukkit.Bukkit
 
 object InnoTournamentEventHandlers {
@@ -88,13 +85,10 @@ object InnoTournamentEventHandlers {
 
     val EXECUTE_COMMAND = register(
         OneArgumentParser("execute_command", { command ->
-            ITournamentEventListener<Any?> { tournament: Tournament, _ ->
+            ITournamentEventListener<Any?> { _, _ ->
                 try {
-                    tournament.getServer().commands.dispatcher.execute(
-                        command,
-                        tournament.getServer().createCommandSourceStack().withPermission(LevelBasedPermissionSet.OWNER)
-                    )
-                } catch (e: CommandSyntaxException) {
+                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command)
+                } catch (e: Exception) {
                     Innotournament.instance.logger.warning("Failed to execute command '$command': ${e.message}")
                 }
             }

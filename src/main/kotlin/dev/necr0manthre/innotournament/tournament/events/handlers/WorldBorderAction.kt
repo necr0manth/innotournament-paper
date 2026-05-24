@@ -2,28 +2,22 @@ package dev.necr0manthre.innotournament.tournament.events.handlers
 
 import dev.necr0manthre.innotournament.tournament.Tournament
 import dev.necr0manthre.innotournament.tournament.events.ITournamentEventListener
-import net.minecraft.world.level.Level
+import org.bukkit.World
 
 class WorldBorderAction(private val size: Double, private val shrinkTime: Long) : ITournamentEventListener<Any?> {
     override fun listen(tournament: Tournament, value: Any?) {
+        val overworld = tournament.getServer().worlds.firstOrNull { it.environment == World.Environment.NORMAL }
+        val nether = tournament.getServer().worlds.firstOrNull { it.environment == World.Environment.NETHER }
+        val end = tournament.getServer().worlds.firstOrNull { it.environment == World.Environment.THE_END }
         if (shrinkTime != 0L) {
-            val gameTime = tournament.getServer().overworld().gameTime
-            tournament.getServer().overworld().getWorldBorder()
-                .lerpSizeBetween(tournament.getServer().overworld().getWorldBorder().getSize(), size, shrinkTime, gameTime)
-            tournament.getServer().getLevel(Level.NETHER)!!.getWorldBorder().lerpSizeBetween(
-                tournament.getServer().getLevel(
-                    Level.NETHER
-                )!!.getWorldBorder().getSize(), size / 8, shrinkTime, gameTime
-            )
-            tournament.getServer().getLevel(Level.END)!!.getWorldBorder().lerpSizeBetween(
-                tournament.getServer().getLevel(
-                    Level.END
-                )!!.getWorldBorder().getSize(), size, shrinkTime, gameTime
-            )
+            val seconds = (shrinkTime / 20L).coerceAtLeast(1L)
+            overworld?.worldBorder?.setSize(size, seconds)
+            nether?.worldBorder?.setSize(size / 8, seconds)
+            end?.worldBorder?.setSize(size, seconds)
         } else {
-            tournament.getServer().overworld().getWorldBorder().setSize(size)
-            tournament.getServer().getLevel(Level.NETHER)!!.getWorldBorder().setSize(size / 8)
-            tournament.getServer().getLevel(Level.END)!!.getWorldBorder().setSize(size)
+            overworld?.worldBorder?.size = size
+            nether?.worldBorder?.size = size / 8
+            end?.worldBorder?.size = size
         }
     }
 }

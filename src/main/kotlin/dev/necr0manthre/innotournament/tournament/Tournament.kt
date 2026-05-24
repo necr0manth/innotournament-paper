@@ -5,19 +5,12 @@ import dev.necr0manthre.innotournament.tournament.events.AbstractTournamentEvent
 import dev.necr0manthre.innotournament.tournament.events.ITournamentEventFactory
 import dev.necr0manthre.innotournament.tournament.events.ITournamentEventListener
 import dev.necr0manthre.innotournament.tournament.events.SimpleEvent
-import net.kyori.adventure.text.Component
-import net.minecraft.core.BlockPos
-import net.minecraft.resources.ResourceKey
-import net.minecraft.resources.Identifier
-import net.minecraft.server.MinecraftServer
-import net.minecraft.world.level.GameType
-import net.minecraft.world.level.Level
 import org.bukkit.Bukkit
 import org.bukkit.GameMode
 import org.bukkit.Location
 import org.bukkit.NamespacedKey
+import org.bukkit.Server
 import org.bukkit.World
-import org.bukkit.craftbukkit.CraftServer
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.HandlerList
@@ -28,12 +21,10 @@ import java.lang.ref.WeakReference
 import kotlin.math.min
 
 class Tournament(
-    val tournamentSpawn: BlockPos,
-    val tournamentSpawnDimension: ResourceKey<Level>,
-    var tournamentPreSpawn: BlockPos,
-    var tournamentPreSpawnDimension: ResourceKey<Level>,
-    var startBoxStructureResourceLocation: Identifier?,
-    var startBoxPos: BlockPos,
+    val tournamentSpawn: Location,
+    var tournamentPreSpawn: Location,
+    var startBoxStructureResourceLocation: NamespacedKey?,
+    var startBoxPos: Location,
     private val preStartGameMode: GameMode,
     preStartEventFactories: Map<ITournamentEventFactory<*>, List<ITournamentEventListener<*>>>,
     mainEventFactories: Map<ITournamentEventFactory<*>, List<ITournamentEventListener<*>>>,
@@ -54,15 +45,9 @@ class Tournament(
     private val preStartEvents = createEvents(preStartEventFactories)
     private val mainEvents = createEvents(mainEventFactories)
     private val removedEvents = mutableSetOf<AbstractTournamentEvent<*>>()
-    private var serverRef = WeakReference<MinecraftServer?>(null)
     private var listener: Listener? = null
 
-    private val currentServer: MinecraftServer?
-        get() = serverRef.get()
-
-    fun getServer(): MinecraftServer {
-        return currentServer ?: (Bukkit.getServer() as CraftServer).server
-    }
+    fun getServer(): Server = Bukkit.getServer()
 
     fun updateSidebars() {
         // TODO: Rebuild sidebar presentation on top of Adventure/Bukkit scoreboards.
@@ -81,21 +66,20 @@ class Tournament(
     }
 
     fun placeStartBox() {
-        // TODO: Port structure placement to Paper/NMS once tournament setup commands compile.
+        // TODO: Port structure placement to Bukkit/Paper once tournament setup commands compile.
     }
 
     fun removeStartBox() {
-        // TODO: Port structure removal to Paper/NMS once tournament setup commands compile.
+        // TODO: Port structure removal to Bukkit/Paper once tournament setup commands compile.
     }
 
-    fun prepare(server: MinecraftServer) {
+    fun prepare(server: Any? = null) {
         check(phase != 1) { "Tournament is already prepared" }
         check(phase != 2) { "Tournament is already started" }
         check(phase != 3) { "Tournament is already ended" }
 
-        serverRef = WeakReference(server)
         registerListener()
-        setWorldBorderAndSpawn(tournamentPreSpawnDimension, tournamentPreSpawn)
+        setWorldBorderAndSpawn(tournamentPreSpawn)
         phase = 1
         subscribeAll(preStartEvents)
         Bukkit.getOnlinePlayers().forEach(::checkPlayer)
@@ -111,8 +95,8 @@ class Tournament(
         subscribeAll(mainEvents)
         preStartEvents.keys.forEach(::removeEvent)
         phase = 2
-        startTime = getServer().overworld().gameTime
-        setWorldBorderAndSpawn(tournamentSpawnDimension, tournamentSpawn)
+        startTime = timeWorld()?.fullTime ?: 0L
+        setWorldBorderAndSpawn(tournamentSpawn)
         TournamentTeam.getAllTeams().forEach(::setupTeam)
         onStart.invoke(null)
         Bukkit.getOnlinePlayers().forEach(::checkPlayer)
@@ -160,7 +144,7 @@ class Tournament(
     }
 
     val elapsedTime: Long
-        get() = if (phase >= 2) getServer().overworld().gameTime - startTime else 0L
+        get() = if (phase >= 2) (timeWorld()?.fullTime ?: startTime) - startTime else 0L
 
     fun setupPlayer(player: Player) {
         val playerData = TournamentPlayer.get(player)
@@ -171,7 +155,7 @@ class Tournament(
         player.foodLevel = 20
         player.saturation = 1f
         player.gameMode = GameMode.SURVIVAL
-        world(tournamentSpawnDimension)?.let { player.teleport(Location(it, tournamentSpawn.x + 0.5, tournamentSpawn.y.toDouble(), tournamentSpawn.z + 0.5)) }
+        player.teleport(centerBlock(tournamentSpawn))
     }
 
     fun setupTeam(team: TournamentTeam) {
@@ -260,41 +244,39 @@ class Tournament(
             @EventHandler
             fun onRespawn(event: PlayerRespawnEvent) {
                 if (phase == 1) {
-                    location(tournamentPreSpawnDimension, tournamentPreSpawn)?.let { event.respawnLocation = it }
+                    event.respawnLocation = centerBlock(tournamentPreSpawn)
                 } else if (phase == 2) {
-                    location(tournamentSpawnDimension, tournamentSpawn)?.let { event.respawnLocation = it }
+                    event.respawnLocation = centerBlock(tournamentSpawn)
                 }
             }
         }.also { Bukkit.getPluginManager().registerEvents(it, Innotournament.instance) }
     }
 
-    private fun setWorldBorderAndSpawn(dimension: ResourceKey<Level>, pos: BlockPos) {
-        val world = world(dimension) ?: return
-        world.spawnLocation = Location(world, pos.x + 0.5, pos.y.toDouble(), pos.z + 0.5)
-        world.worldBorder.center = Location(world, pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble())
+    private fun setWorldBorderAndSpawn(location: Location) {
+        val world = location.world ?: return
+        world.setSpawnLocation(centerBlock(location))
+        world.worldBorder.center = Location(world, location.x, location.y, location.z)
     }
 
-    private fun location(dimension: ResourceKey<Level>, pos: BlockPos): Location? {
-        val world = world(dimension) ?: return null
-        return Location(world, pos.x + 0.5, pos.y.toDouble(), pos.z + 0.5)
+    private fun centerBlock(location: Location): Location {
+        val world = location.world
+        return Location(world, location.blockX + 0.5, location.blockY.toDouble(), location.blockZ + 0.5)
     }
 
-    private fun world(dimension: ResourceKey<Level>): World? {
-        val key = NamespacedKey.fromString(dimension.identifier().toString()) ?: return null
-        return Bukkit.getWorld(key)
+    private fun timeWorld(): World? {
+        return Bukkit.getWorlds().firstOrNull { it.environment == World.Environment.NORMAL }
+            ?: Bukkit.getWorlds().firstOrNull()
     }
 
     companion object {
         private var tournament: Tournament? = null
 
-        fun setTournament(server: MinecraftServer?, tournament: Tournament?) {
+        fun setTournament(server: Any?, tournament: Tournament?) {
             this.tournament?.remove()
             this.tournament = tournament
-            if (server != null && tournament != null) tournament.serverRef = WeakReference(server)
         }
 
-        fun get(server: MinecraftServer?): Tournament? {
-            if (server != null && tournament != null) tournament?.serverRef = WeakReference(server)
+        fun get(server: Any?): Tournament? {
             return tournament
         }
     }
