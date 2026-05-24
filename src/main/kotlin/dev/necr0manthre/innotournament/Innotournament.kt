@@ -2,9 +2,7 @@ package dev.necr0manthre.innotournament
 
 import dev.necr0manthre.innotournament.init.InnoTournamentEventHandlers
 import dev.necr0manthre.innotournament.init.InnoTournamentEvents
-import dev.necr0manthre.innotournament.network.Packets
 import dev.necr0manthre.innotournament.util.ServerScheduler
-import org.bukkit.entity.Player
 import org.bukkit.plugin.java.JavaPlugin
 
 class Innotournament : JavaPlugin() {
@@ -23,7 +21,6 @@ class Innotournament : JavaPlugin() {
 //            )
 //        })
         ServerScheduler.init()
-        Packets.registerPackets()
     }
 
     override fun onDisable() {

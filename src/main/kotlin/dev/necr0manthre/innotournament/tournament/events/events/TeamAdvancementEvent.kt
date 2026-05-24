@@ -7,12 +7,16 @@ import org.bukkit.advancement.Advancement
 
 class TeamAdvancementEvent(private val advancement: Advancement, tournament: Tournament) :
     AbstractTournamentEvent<TeamAdvancement>(tournament) {
+    private var handler: ((TeamAdvancement) -> Unit)? = null
 
     override fun subscribe() {
-        TODO("Not yet implemented")
+        handler = { event: TeamAdvancement ->
+            if (event.advancement == advancement) commonCallback(event)
+        }.also { tournament.advancementHandler.teamAdvancementEvent.subscribe(it) }
     }
 
     override fun unsubscribe() {
-        TODO("Not yet implemented")
+        handler?.let { tournament.advancementHandler.teamAdvancementEvent.unsubscribe(it) }
+        handler = null
     }
 }

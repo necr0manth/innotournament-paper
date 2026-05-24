@@ -22,6 +22,15 @@ abstract class AbstractTournamentEvent<T>(tournament: Tournament) {
         }
     }
 
+    @Suppress("UNCHECKED_CAST")
+    fun addWildcardListener(listener: ITournamentEventListener<*>) {
+        addListener(listener as ITournamentEventListener<T>)
+    }
+
+    fun start() {
+        subscribe()
+    }
+
     private fun notifyListeners(value: T) {
         synchronized(this) {
             listeners.forEach { it.listen(tournament, value) }
@@ -29,6 +38,7 @@ abstract class AbstractTournamentEvent<T>(tournament: Tournament) {
     }
 
     open fun remove() {
+        if (_tournament == null) return
         unsubscribe()
         _tournament = null
         listeners.clear()

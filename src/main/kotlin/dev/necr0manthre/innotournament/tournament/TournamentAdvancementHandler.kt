@@ -1,62 +1,60 @@
 package dev.necr0manthre.innotournament.tournament
 
-import dev.architectury.event.Event
+import dev.necr0manthre.innotournament.Innotournament
+import dev.necr0manthre.innotournament.tournament.events.SimpleEvent
+import dev.necr0manthre.innotournament.tournament.events.event_data.TeamAdvancement
+import org.bukkit.event.EventHandler
+import org.bukkit.event.HandlerList
+import org.bukkit.event.Listener
+import org.bukkit.event.player.PlayerAdvancementDoneEvent
+import org.bukkit.event.player.PlayerJoinEvent
+import java.lang.ref.WeakReference
 
-class TournamentAdvancementHandler(tournament: Tournament?) {
-    private val tournament: java.lang.ref.WeakReference<Tournament?>
-    val teamAdvancementEvent: Event<ITeamAdvancementEventHandler?> = EventFactory.createLoop()
+class TournamentAdvancementHandler(tournament: Tournament) {
+    private val tournament = WeakReference(tournament)
+    val teamAdvancementEvent = SimpleEvent<TeamAdvancement>()
+    private var listener: Listener? = null
 
     fun register() {
-        PlayerEvent.PLAYER_ADVANCEMENT.register(handle)
-        PlayerEvent.PLAYER_JOIN.register(handleJoin)
-    }
+        if (listener != null) return
+        listener = object : Listener {
+            @EventHandler
+            fun onAdvancement(event: PlayerAdvancementDoneEvent) {
+                handle(event)
+            }
 
-    var handle: PlayerEvent.PlayerAdvancement =
-        PlayerEvent.PlayerAdvancement { serverPlayer: ServerPlayer, advancement: AdvancementHolder ->
-            this.handle(
-                serverPlayer,
-                advancement
-            )
-        }
-    var handleJoin: PlayerEvent.PlayerJoin = PlayerEvent.PlayerJoin { player: ServerPlayer -> this.handleJoin(player) }
-
-    init {
-        this.tournament = java.lang.ref.WeakReference<Tournament?>(tournament)
-    }
-
-    private fun handle(serverPlayer: ServerPlayer, advancement: AdvancementHolder) {
-        val player: Entity? = PlayerManager.Companion.getEntity(serverPlayer)
-        val team: java.util.Optional<Entity?> = TeamManager.Companion.getPlayersTeam(player)
-        if (team.isEmpty()) return
-        if (!TeamAdvancements.Companion.get(team.get()).advancements.contains(advancement)) {
-            TeamAdvancements.Companion.get(team.get()).advancements.add(advancement)
-            teamAdvancementEvent.invoker().handle(TeamAdvancement(team.get(), advancement))
-        }
-        for (player1 in TeamManager.Companion.getPlayers(team.get())) {
-            PlayerManager.Companion.getServerPlayer(player1).ifPresent(java.util.function.Consumer { p: ServerPlayer? ->
-                val advancements: PlayerAdvancements = p.getAdvancements()
-                val progress: net.minecraft.advancements.AdvancementProgress =
-                    advancements.getOrStartProgress(advancement)
-                for (c in progress.getRemainingCriteria()) advancements.award(advancement, c)
-            })
-        }
-    }
-
-    private fun handleJoin(player: ServerPlayer) {
-        val tournament = this.tournament.get()
-        if (tournament == null) return
-        val playerEntity: Entity? = PlayerManager.Companion.getEntity(player)
-        val team: java.util.Optional<Entity?> = TeamManager.Companion.getPlayersTeam(playerEntity)
-        if (team.isEmpty()) return
-        for (advancement in TeamAdvancements.Companion.get(team.get()).advancements) {
-            val advancements: PlayerAdvancements = player.getAdvancements()
-            val progress: net.minecraft.advancements.AdvancementProgress = advancements.getOrStartProgress(advancement)
-            for (c in progress.getRemainingCriteria()) advancements.award(advancement, c)
-        }
+            @EventHandler
+            fun onJoin(event: PlayerJoinEvent) {
+                handleJoin(event)
+            }
+        }.also { Innotournament.instance.server.pluginManager.registerEvents(it, Innotournament.instance) }
     }
 
     fun unregister() {
-        PlayerEvent.PLAYER_ADVANCEMENT.unregister(handle)
-        PlayerEvent.PLAYER_JOIN.unregister(handleJoin)
+        listener?.let { HandlerList.unregisterAll(it) }
+        listener = null
+    }
+
+    private fun handle(event: PlayerAdvancementDoneEvent) {
+        val team = TournamentPlayer.get(event.player).team ?: return
+        if (team.advancements.putIfAbsent(event.advancement, event.player.getAdvancementProgress(event.advancement)) == null) {
+            teamAdvancementEvent.invoke(TeamAdvancement(team, event.advancement))
+        }
+
+        team.players.forEach { player ->
+            val online = player.player ?: return@forEach
+            val progress = online.getAdvancementProgress(event.advancement)
+            progress.remainingCriteria.forEach(progress::awardCriteria)
+        }
+    }
+
+    private fun handleJoin(event: PlayerJoinEvent) {
+        tournament.get() ?: return
+        val team = TournamentPlayer.get(event.player).team ?: return
+        team.advancements.keys.forEach { advancement ->
+            val progress = event.player.getAdvancementProgress(advancement)
+            progress.remainingCriteria.forEach(progress::awardCriteria)
+        }
     }
 }
+

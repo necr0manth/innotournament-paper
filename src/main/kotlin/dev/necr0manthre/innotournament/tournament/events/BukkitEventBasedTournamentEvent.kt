@@ -18,6 +18,7 @@ abstract class BukkitEventBasedTournamentEvent<T : Event, V>(
     override fun unsubscribe() {
         synchronized(this) {
             subscription?.let { getHandlerListMethod().unregister(it) }
+            subscription = null
         }
     }
 
@@ -31,7 +32,7 @@ abstract class BukkitEventBasedTournamentEvent<T : Event, V>(
                 Bukkit.getPluginManager()
                     .registerEvent(
                         eventClass.java,
-                        object : Listener {},
+                        listener,
                         EventPriority.LOW,
                         { _, event -> handle(event as T, commonCallback) },
                         Innotournament.instance

@@ -1,13 +1,11 @@
 package dev.necr0manthre.innotournament.teams.events
 
-import dev.dominion.ecs.api.Entity
+import dev.necr0manthre.innotournament.tournament.TournamentPlayer
+import dev.necr0manthre.innotournament.tournament.TournamentTeam
 
-@RequiredArgsConstructor
-class PlayerTeamEvent {
-    val player: Entity? = null
-    val team: Entity? = null
+data class PlayerTeamEvent(
+    val player: TournamentPlayer,
+    val team: TournamentTeam?,
+    var canceled: Boolean = false
+)
 
-    @Getter
-    @Setter
-    private val canceled = false
-}

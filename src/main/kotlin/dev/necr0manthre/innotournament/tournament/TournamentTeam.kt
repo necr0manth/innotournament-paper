@@ -18,6 +18,7 @@ class TournamentTeam private constructor(
     var owner: TournamentPlayer? = null
     var acceptAll: Boolean = false
     var tournament: WeakReference<Tournament>? = null
+    var score: Double = 0.0
     var displayName: Component = displayName
         private set
     val players: MutableList<TournamentPlayer> = mutableListOf()
