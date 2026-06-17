@@ -2,7 +2,6 @@ package dev.necr0manthre.innotournament.tournament.events.events
 
 import com.destroystokyo.paper.event.server.ServerTickEndEvent
 import dev.necr0manthre.innotournament.tournament.Tournament
-import dev.necr0manthre.innotournament.tournament.TournamentPlayer
 import dev.necr0manthre.innotournament.tournament.events.BukkitEventBasedTournamentEvent
 import dev.necr0manthre.innotournament.tournament.events.event_data.PlayerHolder
 import org.bukkit.Bukkit
@@ -21,7 +20,7 @@ class PlayerTickEvent(tournament: Tournament, val period: Int) :
     ) {
         for (player in Bukkit.getServer().onlinePlayers) {
             if (counter.compute(player.uniqueId) { _, t -> ((t ?: -1) + 1) % period } == 0)
-                callback(PlayerHolder(TournamentPlayer.get(player)))
+                callback(PlayerHolder(tournament.getPlayer(player)))
         }
     }
 }

@@ -1,35 +1,32 @@
 package dev.necr0manthre.innotournament.tournament
 
-import dev.necr0manthre.innotournament.teams.invites.InviteSystem
+import dev.necr0manthre.innotournament.players.PluginPlayer
 import net.kyori.adventure.text.Component
-import org.bukkit.Bukkit
 import org.bukkit.OfflinePlayer
 import org.bukkit.entity.Player
-import java.lang.ref.WeakReference
 import java.util.*
 
-class TournamentPlayer private constructor(val uuid: UUID) {
-    var player: Player? = null
+class TournamentPlayer internal constructor(
+    val pluginPlayer: PluginPlayer,
+    val tournament: Tournament
+) {
     var lives: Int = 0
-    var tournament: WeakReference<Tournament>? = null
-    var team: TournamentTeam? = null
-    val invites = InviteSystem.createInvites()
+
+    val uuid: UUID
+        get() = pluginPlayer.uuid
+
+    val player: Player?
+        get() = pluginPlayer.player
 
     val offlinePlayer: OfflinePlayer
-        get() = Bukkit.getOfflinePlayer(uuid)
+        get() = pluginPlayer.offlinePlayer
 
     val name: String
-        get() = player?.name ?: offlinePlayer.name ?: uuid.toString()
+        get() = pluginPlayer.name
 
     val displayName: Component
-        get() = player?.displayName() ?: Component.text(name)
+        get() = pluginPlayer.displayName
 
-    companion object {
-        private val players = HashMap<UUID, TournamentPlayer>()
-
-        fun get(player: Player): TournamentPlayer {
-            return players.getOrPut(player.uniqueId) { TournamentPlayer(player.uniqueId) }
-                .also { it.player = player }
-        }
-    }
+    val team: TournamentTeam?
+        get() = pluginPlayer.team?.let { tournament.getTeam(it) }
 }

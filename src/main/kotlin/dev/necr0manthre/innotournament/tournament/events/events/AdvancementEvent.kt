@@ -1,7 +1,6 @@
 package dev.necr0manthre.innotournament.tournament.events.events
 
 import dev.necr0manthre.innotournament.tournament.Tournament
-import dev.necr0manthre.innotournament.tournament.TournamentPlayer
 import dev.necr0manthre.innotournament.tournament.events.BukkitEventBasedTournamentEvent
 import dev.necr0manthre.innotournament.tournament.events.event_data.PlayerHolder
 import org.bukkit.advancement.Advancement
@@ -17,6 +16,6 @@ class AdvancementEvent(private val advancement: Advancement, tournament: Tournam
         callback: (PlayerHolder) -> Unit
     ) {
         if(event.advancement == advancement)
-            callback(PlayerHolder(TournamentPlayer.get(event.player)))
+            callback(PlayerHolder(tournament.getPlayer(event.player)))
     }
 }

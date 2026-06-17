@@ -1,7 +1,10 @@
 package dev.necr0manthre.innotournament.tournament
 
 import dev.necr0manthre.innotournament.Innotournament
+import dev.necr0manthre.innotournament.players.PluginPlayer
+import dev.necr0manthre.innotournament.tournament.events.EventSubscriptionView
 import dev.necr0manthre.innotournament.tournament.events.SimpleEvent
+import dev.necr0manthre.innotournament.tournament.events.asSubscriptionView
 import dev.necr0manthre.innotournament.tournament.events.event_data.TeamAdvancement
 import org.bukkit.event.EventHandler
 import org.bukkit.event.HandlerList
@@ -12,7 +15,8 @@ import java.lang.ref.WeakReference
 
 class TournamentAdvancementHandler(tournament: Tournament) {
     private val tournament = WeakReference(tournament)
-    val teamAdvancementEvent = SimpleEvent<TeamAdvancement>()
+    private val teamAdvancementBackingEvent = SimpleEvent<TeamAdvancement>()
+    val teamAdvancementEvent: EventSubscriptionView<TeamAdvancement> = teamAdvancementBackingEvent.asSubscriptionView()
     private var listener: Listener? = null
 
     fun register() {
@@ -36,9 +40,10 @@ class TournamentAdvancementHandler(tournament: Tournament) {
     }
 
     private fun handle(event: PlayerAdvancementDoneEvent) {
-        val team = TournamentPlayer.get(event.player).team ?: return
+        val currentTournament = tournament.get() ?: return
+        val team = PluginPlayer.get(event.player).team?.let { currentTournament.getTeam(it) } ?: return
         if (team.advancements.putIfAbsent(event.advancement, event.player.getAdvancementProgress(event.advancement)) == null) {
-            teamAdvancementEvent.invoke(TeamAdvancement(team, event.advancement))
+            teamAdvancementBackingEvent.invoke(TeamAdvancement(team, event.advancement))
         }
 
         team.players.forEach { player ->
@@ -49,12 +54,11 @@ class TournamentAdvancementHandler(tournament: Tournament) {
     }
 
     private fun handleJoin(event: PlayerJoinEvent) {
-        tournament.get() ?: return
-        val team = TournamentPlayer.get(event.player).team ?: return
+        val currentTournament = tournament.get() ?: return
+        val team = PluginPlayer.get(event.player).team?.let { currentTournament.getTeam(it) } ?: return
         team.advancements.keys.forEach { advancement ->
             val progress = event.player.getAdvancementProgress(advancement)
             progress.remainingCriteria.forEach(progress::awardCriteria)
         }
     }
 }
-

@@ -1,7 +1,6 @@
 package dev.necr0manthre.innotournament.init
 
 import dev.necr0manthre.innotournament.tournament.Tournament
-import dev.necr0manthre.innotournament.tournament.TournamentPlayer
 import dev.necr0manthre.innotournament.tournament.events.AbstractTournamentEvent
 import dev.necr0manthre.innotournament.tournament.events.BukkitEventBasedTournamentEvent
 import dev.necr0manthre.innotournament.tournament.events.ITournamentEventFactory
@@ -81,9 +80,9 @@ object InnoTournamentEvents {
                 ) {
                     override fun handle(event: PlayerDeathEvent, callback: (PlayerKilled) -> Unit) {
                         val source = event.entity.killer ?: return
-                        val target = TournamentPlayer.get(event.entity)
+                        val target = tournament.getPlayer(event.entity)
                         if (target.lives > 0) {
-                            callback(PlayerKilled(TournamentPlayer.get(source), target))
+                            callback(PlayerKilled(tournament.getPlayer(source), target))
                         }
                     }
                 }

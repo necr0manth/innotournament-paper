@@ -1,7 +1,7 @@
 package dev.necr0manthre.innotournament.teams.invites
 
-import dev.necr0manthre.innotournament.tournament.TournamentPlayer
-import dev.necr0manthre.innotournament.tournament.TournamentTeam
+import dev.necr0manthre.innotournament.players.PluginPlayer
+import dev.necr0manthre.innotournament.teams.PluginTeam
 import java.util.Collections
 
 object InviteSystem {
@@ -32,11 +32,11 @@ object InviteSystem {
         }
     }
 
-    fun isPlayerInvitedToTeam(player: TournamentPlayer, team: TournamentTeam): Boolean {
+    fun isPlayerInvitedToTeam(player: PluginPlayer, team: PluginTeam): Boolean {
         return team.invites().any { it.player == player && !it.isExpired }
     }
 
-    fun invitePlayerToTeam(player: TournamentPlayer, team: TournamentTeam, lifetime: Int) {
+    fun invitePlayerToTeam(player: PluginPlayer, team: PluginTeam, lifetime: Int) {
         if (isPlayerInvitedToTeam(player, team)) return
 
         val invite = Invite(team, player, lifetime)
@@ -45,7 +45,7 @@ object InviteSystem {
         player.invites().add(invite)
     }
 
-    fun rejectInvite(player: TournamentPlayer, team: TournamentTeam) {
+    fun rejectInvite(player: PluginPlayer, team: PluginTeam) {
         val teamInvites = team.invites()
         teamInvites.removeIf { invite ->
             if (invite.player == player) {
@@ -57,7 +57,6 @@ object InviteSystem {
         }
     }
 
-    private fun TournamentPlayer.invites() = (invites as InvitesImpl).invitesInternal
-    private fun TournamentTeam.invites() = (invites as InvitesImpl).invitesInternal
+    private fun PluginPlayer.invites() = (invites as InvitesImpl).invitesInternal
+    private fun PluginTeam.invites() = (invites as InvitesImpl).invitesInternal
 }
-

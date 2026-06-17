@@ -11,8 +11,6 @@ import io.papermc.paper.command.brigadier.Commands
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.event.ClickEvent
 import net.kyori.adventure.text.format.NamedTextColor
-import org.bukkit.Bukkit
-import org.bukkit.craftbukkit.CraftServer
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -64,7 +62,7 @@ object TournamentCommand {
                 .executes { ctx ->
                     val tournament = ensureTournament(ctx) ?: return@executes 0
                     try {
-                        tournament.prepare(nmsServer())
+                        tournament.prepare()
                         ctx.source.sender.sendMessage(Component.text("Tournament prepared", NamedTextColor.GREEN))
                     } catch (e: Exception) {
                         ctx.source.sender.sendMessage(
@@ -81,7 +79,7 @@ object TournamentCommand {
                 .executes { ctx ->
                     val tournament = ensureTournament(ctx) ?: return@executes 0
                     try {
-                        if (tournament.phase == 0) tournament.prepare(nmsServer())
+                        if (tournament.phase == 0) tournament.prepare()
                         tournament.start()
                         ctx.source.sender.sendMessage(Component.text("Tournament started", NamedTextColor.GREEN))
                     } catch (e: Exception) {
@@ -97,14 +95,14 @@ object TournamentCommand {
             Commands.literal("stop")
                 .requires { it.sender.hasPermission("minecraft.command.function") }
                 .executes {
-                    Tournament.setTournament(nmsServer(), null)
+                    Tournament.setTournament(null)
                     Command.SINGLE_SUCCESS
                 }
         )
     }
 
     private fun ensureTournament(ctx: com.mojang.brigadier.context.CommandContext<CommandSourceStack>): Tournament? {
-        Tournament.get(nmsServer())?.let { return it }
+        Tournament.get()?.let { return it }
         val path = selectedTournamentPath
         if (path == null) {
             ctx.source.sender.sendMessage(Component.text("No tournament selected", NamedTextColor.RED))
@@ -116,7 +114,7 @@ object TournamentCommand {
         }
 
         return try {
-            TournamentData.load(path).createTournament(path).also { Tournament.setTournament(nmsServer(), it) }
+            TournamentData.load(path).createTournament(path).also { Tournament.setTournament(it) }
         } catch (e: IOException) {
             ctx.source.sender.sendMessage(Component.text("Cannot read tournament data: ${e.message}", NamedTextColor.RED))
             null
@@ -126,7 +124,4 @@ object TournamentCommand {
     private fun tournamentsFolder(): Path {
         return Innotournament.instance.dataFolder.toPath().resolve("tournaments")
     }
-
-    private fun nmsServer() = (Bukkit.getServer() as CraftServer).server
 }
-

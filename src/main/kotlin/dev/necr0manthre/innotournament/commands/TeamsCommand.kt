@@ -5,10 +5,10 @@ import com.mojang.brigadier.arguments.BoolArgumentType
 import com.mojang.brigadier.arguments.StringArgumentType
 import com.mojang.brigadier.builder.RequiredArgumentBuilder
 import com.mojang.brigadier.context.CommandContext
+import dev.necr0manthre.innotournament.players.PluginPlayer
+import dev.necr0manthre.innotournament.teams.PluginTeam
 import dev.necr0manthre.innotournament.teams.invites.InviteSystem
 import dev.necr0manthre.innotournament.tournament.Tournament
-import dev.necr0manthre.innotournament.tournament.TournamentPlayer
-import dev.necr0manthre.innotournament.tournament.TournamentTeam
 import dev.necr0manthre.innotournament.util.CommandRegisterer
 import io.papermc.paper.command.brigadier.CommandSourceStack
 import io.papermc.paper.command.brigadier.Commands
@@ -20,9 +20,6 @@ import net.kyori.adventure.text.event.HoverEvent
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.format.TextDecoration
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
-import net.minecraft.server.MinecraftServer
-import org.bukkit.Bukkit
-import org.bukkit.craftbukkit.CraftServer
 import org.bukkit.entity.Player
 
 object TeamsCommand {
@@ -45,7 +42,7 @@ object TeamsCommand {
                     )
 
                     if (team.players.isEmpty()) {
-                        TournamentTeam.removeTeam(team)
+                        PluginTeam.removeTeam(team)
                     } else {
                         team.players.forEach { member ->
                             member.player?.sendMessage(
@@ -83,7 +80,7 @@ object TeamsCommand {
                         .suggestTeams()
                         .executes { ctx ->
                             val player = player(ctx) ?: return@executes 1
-                            val team = TournamentTeam.getTeamById(StringArgumentType.getString(ctx, "team"))
+                            val team = PluginTeam.getTeamById(StringArgumentType.getString(ctx, "team"))
                                 ?: run {
                                     ctx.source.sender.sendMessage(Component.text("Team not found", NamedTextColor.RED))
                                     return@executes 1
@@ -134,12 +131,12 @@ object TeamsCommand {
 
                             val displayName = ctx.getArgument("displayName", Component::class.java)
                             val id = idFromDisplayName(displayName)
-                            if (TournamentTeam.getTeamById(id) != null) {
+                            if (PluginTeam.getTeamById(id) != null) {
                                 ctx.source.sender.sendMessage(Component.text("Team already exists", NamedTextColor.RED))
                                 return@executes 1
                             }
 
-                            val team = TournamentTeam.createNewTeam(creator, id, displayName)
+                            val team = PluginTeam.createNewTeam(creator, id, displayName)
                             ctx.source.sender.sendMessage(
                                 Component.text("Created team ").append(team.displayName)
                             )
@@ -215,7 +212,7 @@ object TeamsCommand {
                                 return@executes 1
                             }
 
-                            val team = team(ctx) ?: TournamentTeam.createNewTeam(inviter)
+                            val team = team(ctx) ?: PluginTeam.createNewTeam(inviter)
                             InviteSystem.invitePlayerToTeam(invited, team, 1000)
                             invited.player?.sendMessage(
                                 Component.empty()
@@ -361,14 +358,14 @@ object TeamsCommand {
             Commands.literal("removeAll")
                 .requires { source -> source.sender.hasPermission("minecraft.command.team") }
                 .executes { ctx ->
-                    TournamentTeam.getAllTeams().toList().forEach(TournamentTeam::removeTeam)
+                    PluginTeam.getAllTeams().toList().forEach(PluginTeam::removeTeam)
                     ctx.source.sender.sendMessage(Component.text("All teams removed"))
                     Command.SINGLE_SUCCESS
                 }
         )
     }
 
-    private fun myTeamMessage(player: TournamentPlayer, team: TournamentTeam): Component {
+    private fun myTeamMessage(player: PluginPlayer, team: PluginTeam): Component {
         val isOwner = team.owner == player
         val ans = Component.text()
             .append(Component.text("\n===============\n", NamedTextColor.GRAY))
@@ -405,8 +402,8 @@ object TeamsCommand {
     }
 
     private fun memberLine(
-        player: TournamentPlayer,
-        team: TournamentTeam,
+        player: PluginPlayer,
+        team: PluginTeam,
         isSelf: Boolean,
         canKick: Boolean
     ): Component {
@@ -449,7 +446,7 @@ object TeamsCommand {
         return line.append(Component.text("\n")).build()
     }
 
-    private fun acceptAllLine(team: TournamentTeam, isOwner: Boolean): Component {
+    private fun acceptAllLine(team: PluginTeam, isOwner: Boolean): Component {
         val line = Component.text()
             .append(Component.text("Accept all: ", NamedTextColor.AQUA))
             .append(
@@ -480,7 +477,7 @@ object TeamsCommand {
     }
 
     private fun executeListMembers(source: CommandSourceStack, teamId: String): Int {
-        val team = TournamentTeam.getTeamById(teamId)
+        val team = PluginTeam.getTeamById(teamId)
         if (team == null) {
             source.sender.sendMessage(Component.text("Team not found", NamedTextColor.RED))
             return 0
@@ -505,7 +502,7 @@ object TeamsCommand {
     }
 
     private fun executeListTeams(source: CommandSourceStack): Int {
-        val teams = TournamentTeam.getAllTeams()
+        val teams = PluginTeam.getAllTeams()
         if (teams.isEmpty()) {
             source.sender.sendMessage(Component.text("There are no teams"))
         } else {
@@ -518,7 +515,7 @@ object TeamsCommand {
         return teams.size
     }
 
-    private fun sendJoinPlayer(player: TournamentPlayer, team: TournamentTeam) {
+    private fun sendJoinPlayer(player: PluginPlayer, team: PluginTeam) {
         player.player?.sendMessage(
             Component.text("You joined team ")
                 .append(team.displayName)
@@ -534,7 +531,7 @@ object TeamsCommand {
         }
     }
 
-    private fun checkTeam(ctx: CommandContext<CommandSourceStack>): TournamentTeam? {
+    private fun checkTeam(ctx: CommandContext<CommandSourceStack>): PluginTeam? {
         val team = team(ctx)
         if (team == null) {
             ctx.source.sender.sendMessage(Component.text("You're not on the team.", NamedTextColor.RED))
@@ -543,7 +540,7 @@ object TeamsCommand {
         return team
     }
 
-    private fun checkOwner(ctx: CommandContext<CommandSourceStack>): TournamentPlayer? {
+    private fun checkOwner(ctx: CommandContext<CommandSourceStack>): PluginPlayer? {
         val team = team(ctx)
         val player = player(ctx)
         if (team == null || player == null) return null
@@ -553,32 +550,28 @@ object TeamsCommand {
         return null
     }
 
-    private fun player(ctx: CommandContext<CommandSourceStack>): TournamentPlayer? {
+    private fun player(ctx: CommandContext<CommandSourceStack>): PluginPlayer? {
         val player = ctx.source.executor as? Player ?: return null
-        return TournamentPlayer.get(player)
+        return PluginPlayer.get(player)
     }
 
-    private fun team(ctx: CommandContext<CommandSourceStack>): TournamentTeam? {
+    private fun team(ctx: CommandContext<CommandSourceStack>): PluginTeam? {
         return player(ctx)?.team
     }
 
     private fun updateSidebars() {
-        Tournament.get(nmsServer())?.updateSidebars()
-    }
-
-    private fun nmsServer(): MinecraftServer {
-        return (Bukkit.getServer() as CraftServer).server
+        Tournament.get()?.updateSidebars()
     }
 
     private fun <S, T> RequiredArgumentBuilder<S, T>.suggestTeams(): RequiredArgumentBuilder<S, T> {
         return suggests { _, builder ->
-            TournamentTeam.getAllTeams().forEach { builder.suggest(it.id) }
+            PluginTeam.getAllTeams().forEach { builder.suggest(it.id) }
             builder.buildFuture()
         }
     }
 
-    private fun CommandContext<CommandSourceStack>.getPlayerArgument(name: String): TournamentPlayer {
-        return TournamentPlayer.get(
+    private fun CommandContext<CommandSourceStack>.getPlayerArgument(name: String): PluginPlayer {
+        return PluginPlayer.get(
             getArgument(name, PlayerSelectorArgumentResolver::class.java)
                 .resolve(source)
                 .single()

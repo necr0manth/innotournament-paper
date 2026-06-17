@@ -1,11 +1,10 @@
 package dev.necr0manthre.innotournament.teams.events
 
-import dev.necr0manthre.innotournament.tournament.TournamentPlayer
-import dev.necr0manthre.innotournament.tournament.TournamentTeam
+import dev.necr0manthre.innotournament.players.PluginPlayer
+import dev.necr0manthre.innotournament.teams.PluginTeam
 
 data class PlayerTeamEvent(
-    val player: TournamentPlayer,
-    val team: TournamentTeam?,
+    val player: PluginPlayer,
+    val team: PluginTeam?,
     var canceled: Boolean = false
 )
-
