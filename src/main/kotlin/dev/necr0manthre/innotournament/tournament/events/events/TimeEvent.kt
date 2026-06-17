@@ -3,27 +3,27 @@ package dev.necr0manthre.innotournament.tournament.events.events
 import com.destroystokyo.paper.event.server.ServerTickEndEvent
 import dev.necr0manthre.innotournament.tournament.Tournament
 import dev.necr0manthre.innotournament.tournament.events.BukkitEventBasedTournamentEvent
-import dev.necr0manthre.innotournament.tournament.events.ITournamentEventFactory
+import dev.necr0manthre.innotournament.tournament.events.TournamentEventInstance
 
-class TimeEvent(private val time: Long, tournament: Tournament) :
+class TimeEvent(private val time: Long) :
     BukkitEventBasedTournamentEvent<ServerTickEndEvent, Unit>(
         ServerTickEndEvent::class,
-        ServerTickEndEvent::getHandlerList,
-        tournament
+        ServerTickEndEvent::getHandlerList
     ) {
-    private var completed = false
-
-    override fun handle(
-        event: ServerTickEndEvent,
-        callback: (Unit) -> Unit
-    ) {
-        if (tournament.elapsedTime >= time && !completed) {
-            completed = true
-            callback(Unit)
+    override fun subscribe(tournament: Tournament): TournamentEventInstance<Unit> {
+        var completed = false
+        return subscribeBukkit(tournament) { _, callback ->
+            if (tournament.elapsedTime >= time && !completed) {
+                completed = true
+                callback(Unit)
+            }
         }
     }
 
-    companion object {
-        fun factory(time: Long): ITournamentEventFactory<TimeEvent> = { tournament -> TimeEvent(time, tournament) }
+    override fun handle(
+        tournament: Tournament,
+        event: ServerTickEndEvent,
+        callback: (Unit) -> Unit
+    ) {
     }
 }

@@ -4,16 +4,16 @@ import dev.necr0manthre.innotournament.tournament.Tournament
 
 class LambdaTournamentEvent<T, V>(
     private val subscribeAction: (Tournament, (T) -> Unit) -> V,
-    private val unsubscribeAction: (Tournament, (T) -> Unit, V) -> Unit,
-    tournament: Tournament
-) : AbstractTournamentEvent<T>(tournament) {
-    private var subscription: V? = null
+    private val unsubscribeAction: (Tournament, (T) -> Unit, V) -> Unit
+) : TournamentEvent<T> {
 
-    override fun subscribe() {
-        subscription = subscribeAction(tournament, commonCallback)
-    }
-
-    override fun unsubscribe() {
-        subscription?.let { unsubscribeAction(tournament, commonCallback, it) }
+    override fun subscribe(tournament: Tournament): TournamentEventInstance<T> {
+        val backingEvent = SimpleEvent<T>()
+        val callback: (T) -> Unit = backingEvent::invoke
+        var subscription: V? = subscribeAction(tournament, callback)
+        return TournamentEventInstance(tournament, backingEvent) {
+            subscription?.let { unsubscribeAction(tournament, callback, it) }
+            subscription = null
+        }
     }
 }

@@ -1,10 +1,9 @@
 package dev.necr0manthre.innotournament.init
 
 import dev.necr0manthre.innotournament.tournament.Tournament
-import dev.necr0manthre.innotournament.tournament.events.AbstractTournamentEvent
 import dev.necr0manthre.innotournament.tournament.events.BukkitEventBasedTournamentEvent
-import dev.necr0manthre.innotournament.tournament.events.ITournamentEventFactory
 import dev.necr0manthre.innotournament.tournament.events.LambdaTournamentEvent
+import dev.necr0manthre.innotournament.tournament.events.TournamentEvent
 import dev.necr0manthre.innotournament.tournament.events.event_data.PlayerKilled
 import dev.necr0manthre.innotournament.tournament.events.events.AdvancementEvent
 import dev.necr0manthre.innotournament.tournament.events.events.PlayerTickEvent
@@ -20,7 +19,7 @@ import org.bukkit.advancement.Advancement
 import org.bukkit.event.entity.PlayerDeathEvent
 
 object InnoTournamentEvents {
-    private fun <E : AbstractTournamentEvent<*>, T : IParser<String, ITournamentEventFactory<E>>> register(parser: T): T {
+    private fun <E : TournamentEvent<*>, T : IParser<String, E>> register(parser: T): T {
         return TournamentEventParserRegistry.register(String::class, parser)
     }
 
@@ -28,7 +27,7 @@ object InnoTournamentEvents {
     }
 
     val TIME = register(
-        OneArgumentParser("time", { time -> TimeEvent.factory(time.toLong()) })
+        OneArgumentParser("time", { time -> TimeEvent(time.toLong()) })
     )
 
     val PREPARE = register(
@@ -60,30 +59,31 @@ object InnoTournamentEvents {
 
     val ADVANCEMENT = register(
         OneArgumentParser("advancement", { id ->
-            ITournamentEventFactory { tournament -> AdvancementEvent(resolveAdvancement(id), tournament) }
+            AdvancementEvent(resolveAdvancement(id))
         })
     )
 
     val TEAM_ADVANCEMENT = register(
         OneArgumentParser("teamAdvancement", { id ->
-            ITournamentEventFactory { tournament -> TeamAdvancementEvent(resolveAdvancement(id), tournament) }
+            TeamAdvancementEvent(resolveAdvancement(id))
         })
     )
 
     val PLAYER_KILLED = register(
         SimpleDecoder("playerKilled") {
-            ITournamentEventFactory { tournament ->
-                object : BukkitEventBasedTournamentEvent<PlayerDeathEvent, PlayerKilled>(
-                    PlayerDeathEvent::class,
-                    PlayerDeathEvent::getHandlerList,
-                    tournament
+            object : BukkitEventBasedTournamentEvent<PlayerDeathEvent, PlayerKilled>(
+                PlayerDeathEvent::class,
+                PlayerDeathEvent::getHandlerList
+            ) {
+                override fun handle(
+                    tournament: Tournament,
+                    event: PlayerDeathEvent,
+                    callback: (PlayerKilled) -> Unit
                 ) {
-                    override fun handle(event: PlayerDeathEvent, callback: (PlayerKilled) -> Unit) {
-                        val source = event.entity.killer ?: return
-                        val target = tournament.getPlayer(event.entity)
-                        if (target.lives > 0) {
-                            callback(PlayerKilled(tournament.getPlayer(source), target))
-                        }
+                    val source = event.entity.killer ?: return
+                    val target = tournament.getPlayer(event.entity)
+                    if (target.lives > 0) {
+                        callback(PlayerKilled(tournament.getPlayer(source), target))
                     }
                 }
             }
@@ -92,33 +92,30 @@ object InnoTournamentEvents {
 
     val PLAYER_TICK = register(
         SimpleDecoder("playerTick") {
-            ITournamentEventFactory { tournament -> PlayerTickEvent(tournament, 1) }
+            PlayerTickEvent(1)
         }
     )
 
     val PLAYER_TICK_WITH_PERIOD = register(
         OneArgumentParser("playerTick", { period ->
-            ITournamentEventFactory { tournament -> PlayerTickEvent(tournament, period.toInt()) }
+            PlayerTickEvent(period.toInt())
         })
     )
 
     private fun lifecycleEvent(
         subscribe: Tournament.((Any?) -> Unit) -> Unit,
         unsubscribe: Tournament.((Any?) -> Unit) -> Unit
-    ): ITournamentEventFactory<LambdaTournamentEvent<Any?, (Any?) -> Unit>> {
-        return ITournamentEventFactory { tournament ->
-            LambdaTournamentEvent(
-                subscribeAction = { currentTournament, callback ->
-                    val listener: (Any?) -> Unit = { callback(null) }
-                    currentTournament.subscribe(listener)
-                    listener
-                },
-                unsubscribeAction = { currentTournament, _, listener ->
-                    currentTournament.unsubscribe(listener)
-                },
-                tournament = tournament
-            )
-        }
+    ): TournamentEvent<Any?> {
+        return LambdaTournamentEvent(
+            subscribeAction = { currentTournament, callback ->
+                val listener: (Any?) -> Unit = { callback(null) }
+                currentTournament.subscribe(listener)
+                listener
+            },
+            unsubscribeAction = { currentTournament, _, listener ->
+                currentTournament.unsubscribe(listener)
+            }
+        )
     }
 
     private fun resolveAdvancement(id: String): Advancement {

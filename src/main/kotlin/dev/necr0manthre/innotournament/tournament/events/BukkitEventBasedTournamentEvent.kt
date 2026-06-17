@@ -11,34 +11,31 @@ import kotlin.reflect.KClass
 
 abstract class BukkitEventBasedTournamentEvent<T : Event, V>(
     private val eventClass: KClass<T>,
-    private val getHandlerListMethod: () -> HandlerList,
-    tournament: Tournament
-) : AbstractTournamentEvent<V>(tournament) {
-    private var subscription: Listener? = null
-    override fun unsubscribe() {
-        synchronized(this) {
-            subscription?.let { getHandlerListMethod().unregister(it) }
-            subscription = null
-        }
+    private val getHandlerListMethod: () -> HandlerList
+) : TournamentEvent<V> {
+    override fun subscribe(tournament: Tournament): TournamentEventInstance<V> {
+        return subscribeBukkit(tournament) { event, callback -> handle(tournament, event, callback) }
     }
 
-    abstract fun handle(event: T, callback: (V) -> Unit)
+    protected abstract fun handle(tournament: Tournament, event: T, callback: (V) -> Unit)
 
-    override fun subscribe() {
-        synchronized(this) {
-            subscription = subscription.let {
-                if (it != null) error("already subscribed")
-                val listener = object : Listener {}
-                Bukkit.getPluginManager()
-                    .registerEvent(
-                        eventClass.java,
-                        listener,
-                        EventPriority.LOW,
-                        { _, event -> handle(event as T, commonCallback) },
-                        Innotournament.instance
-                    )
-                return@let listener
-            }
+    protected fun subscribeBukkit(
+        tournament: Tournament,
+        handler: (T, (V) -> Unit) -> Unit
+    ): TournamentEventInstance<V> {
+        val backingEvent = SimpleEvent<V>()
+        var subscription: Listener? = object : Listener {}
+        Bukkit.getPluginManager()
+            .registerEvent(
+                eventClass.java,
+                subscription!!,
+                EventPriority.LOW,
+                { _, event -> handler(event as T, backingEvent::invoke) },
+                Innotournament.instance
+            )
+        return TournamentEventInstance(tournament, backingEvent) {
+            subscription?.let { getHandlerListMethod().unregister(it) }
+            subscription = null
         }
     }
 }

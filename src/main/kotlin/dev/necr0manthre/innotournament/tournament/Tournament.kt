@@ -5,11 +5,11 @@ import dev.necr0manthre.innotournament.players.PluginPlayer
 import dev.necr0manthre.innotournament.teams.PluginTeam
 import dev.necr0manthre.innotournament.teams.events.PlayerTeamEvent
 import dev.necr0manthre.innotournament.teams.events.TeamEvents
-import dev.necr0manthre.innotournament.tournament.events.AbstractTournamentEvent
 import dev.necr0manthre.innotournament.tournament.events.EventSubscriptionView
-import dev.necr0manthre.innotournament.tournament.events.ITournamentEventFactory
 import dev.necr0manthre.innotournament.tournament.events.ITournamentEventListener
 import dev.necr0manthre.innotournament.tournament.events.SimpleEvent
+import dev.necr0manthre.innotournament.tournament.events.TournamentEvent
+import dev.necr0manthre.innotournament.tournament.events.TournamentEventInstance
 import dev.necr0manthre.innotournament.tournament.events.asSubscriptionView
 import com.destroystokyo.paper.event.server.ServerTickEndEvent
 import net.kyori.adventure.text.Component
@@ -37,8 +37,8 @@ class Tournament(
     var startBoxStructureResourceLocation: NamespacedKey?,
     var startBoxPos: Location,
     private val preStartGameMode: GameMode,
-    preStartEventFactories: Map<ITournamentEventFactory<*>, List<ITournamentEventListener<*>>>,
-    mainEventFactories: Map<ITournamentEventFactory<*>, List<ITournamentEventListener<*>>>,
+    private val preStartEvents: Map<TournamentEvent<*>, List<ITournamentEventListener<*>>>,
+    private val mainEvents: Map<TournamentEvent<*>, List<ITournamentEventListener<*>>>,
     var teamScoreModifiers: DoubleArray,
     val lastTeamScore: Float
 ) {
@@ -58,9 +58,9 @@ class Tournament(
         private set
     var startTime: Long = 0L
 
-    private val preStartEvents = createEvents(preStartEventFactories)
-    private val mainEvents = createEvents(mainEventFactories)
-    private val removedEvents = mutableSetOf<AbstractTournamentEvent<*>>()
+    private val preStartEventInstances = mutableSetOf<TournamentEventInstance<*>>()
+    private val mainEventInstances = mutableSetOf<TournamentEventInstance<*>>()
+    private val removedEvents = mutableSetOf<TournamentEventInstance<*>>()
     private val players = LinkedHashMap<PluginPlayer, TournamentPlayer>()
     private val teams = LinkedHashMap<PluginTeam, TournamentTeam>()
     private var listener: Listener? = null
@@ -76,8 +76,8 @@ class Tournament(
     fun remove() {
         println("$this is being removed")
         onRemoveEvent.invoke(null)
-        preStartEvents.keys.forEach(::removeEvent)
-        mainEvents.keys.forEach(::removeEvent)
+        removeEvents(preStartEventInstances)
+        removeEvents(mainEventInstances)
         advancementHandler.unregister()
         listener?.let { HandlerList.unregisterAll(it) }
         listener = null
@@ -125,7 +125,7 @@ class Tournament(
         registerTeamEventListeners()
         setWorldBorderAndSpawn(tournamentPreSpawn)
         phase = 1
-        subscribeAll(preStartEvents)
+        subscribeAll(preStartEvents, preStartEventInstances)
         Bukkit.getOnlinePlayers().forEach(::checkPlayer)
         onPrepareEvent.invoke(null)
         advancementHandler.register()
@@ -136,8 +136,8 @@ class Tournament(
         check(phase != 2) { "Tournament is already started" }
         check(phase != 3) { "Tournament is already ended" }
 
-        subscribeAll(mainEvents)
-        preStartEvents.keys.forEach(::removeEvent)
+        subscribeAll(mainEvents, mainEventInstances)
+        removeEvents(preStartEventInstances)
         phase = 2
         startTime = timeWorld()?.fullTime ?: 0L
         setWorldBorderAndSpawn(tournamentSpawn)
@@ -273,21 +273,24 @@ class Tournament(
         return getPlayer(PluginPlayer.get(player))
     }
 
-    private fun createEvents(
-        factories: Map<ITournamentEventFactory<*>, List<ITournamentEventListener<*>>>
-    ): MutableMap<AbstractTournamentEvent<*>, List<ITournamentEventListener<*>>> {
-        return factories.mapKeys { it.key.createEvent(this) }.toMutableMap()
-    }
-
-    private fun subscribeAll(events: Map<AbstractTournamentEvent<*>, List<ITournamentEventListener<*>>>) {
+    private fun subscribeAll(
+        events: Map<TournamentEvent<*>, List<ITournamentEventListener<*>>>,
+        instances: MutableSet<TournamentEventInstance<*>>
+    ) {
         events.forEach { (event, listeners) ->
-            event.start()
-            listeners.forEach { event.addWildcardListener(it) }
+            val instance = event.subscribe(this)
+            listeners.forEach { instance.addWildcardListener(it) }
+            instances.add(instance)
         }
     }
 
-    private fun removeEvent(event: AbstractTournamentEvent<*>) {
-        if (removedEvents.add(event)) event.remove()
+    private fun removeEvents(events: MutableSet<TournamentEventInstance<*>>) {
+        events.toList().forEach(::removeEvent)
+        events.clear()
+    }
+
+    private fun removeEvent(event: TournamentEventInstance<*>) {
+        if (removedEvents.add(event)) event.unsubscribe()
     }
 
     private fun scoreModifier(teamSize: Int): Double {
@@ -336,11 +339,11 @@ class Tournament(
 
         aliveTeams.singleOrNull()?.let { it.score += lastTeamScore }
         broadcastFinalStandings()
+        onEndEvent.invoke(null)
         phase = 3
-        mainEvents.keys.forEach(::removeEvent)
+        removeEvents(mainEventInstances)
         advancementHandler.unregister()
         unregisterTeamEventListeners()
-        onEndEvent.invoke(null)
         clearParticipationState()
     }
 

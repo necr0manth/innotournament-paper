@@ -6,12 +6,12 @@ import dev.necr0manthre.innotournament.tournament.events.event_data.PlayerHolder
 import org.bukkit.advancement.Advancement
 import org.bukkit.event.player.PlayerAdvancementDoneEvent
 
-class AdvancementEvent(private val advancement: Advancement, tournament: Tournament) : BukkitEventBasedTournamentEvent<PlayerAdvancementDoneEvent, PlayerHolder>(
+class AdvancementEvent(private val advancement: Advancement) : BukkitEventBasedTournamentEvent<PlayerAdvancementDoneEvent, PlayerHolder>(
     PlayerAdvancementDoneEvent::class,
-    PlayerAdvancementDoneEvent::getHandlerList,
-    tournament,
+    PlayerAdvancementDoneEvent::getHandlerList
 ) {
     override fun handle(
+        tournament: Tournament,
         event: PlayerAdvancementDoneEvent,
         callback: (PlayerHolder) -> Unit
     ) {

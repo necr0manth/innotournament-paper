@@ -9,8 +9,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 object EventLoader {
-    fun loadEvents(json: JsonElement): Map<ITournamentEventFactory<*>, List<ITournamentEventListener<*>>> {
-        val map = mutableMapOf<ITournamentEventFactory<*>, List<ITournamentEventListener<*>>>()
+    fun loadEvents(json: JsonElement): Map<TournamentEvent<*>, List<ITournamentEventListener<*>>> {
+        val map = mutableMapOf<TournamentEvent<*>, List<ITournamentEventListener<*>>>()
         for (line in json.getAsJsonObject().entrySet()) {
             val event = TournamentEventParser.parse(line.key) ?: error("")
             if (line.value.isJsonPrimitive) map[event] =
@@ -25,7 +25,7 @@ object EventLoader {
         return map
     }
 
-    fun loadEvents(path: Path): Map<ITournamentEventFactory<*>, List<ITournamentEventListener<*>>> {
+    fun loadEvents(path: Path): Map<TournamentEvent<*>, List<ITournamentEventListener<*>>> {
         return try {
             loadEvents(JsonParser.parseReader(Files.newBufferedReader(path)))
         } catch (e: IOException) {
