@@ -95,6 +95,7 @@ class Tournament(
     private var listener: Listener? = null
     private var teamJoinListener: ((PlayerTeamEvent) -> Unit)? = null
     private var teamLeaveListener: ((PlayerTeamEvent) -> Unit)? = null
+    private var teamRemoveListener: ((PluginTeam) -> Unit)? = null
 
     fun getServer(): Server = Bukkit.getServer()
 
@@ -281,6 +282,11 @@ class Tournament(
         updateSidebars()
     }
 
+    fun onTeamRemoved(team: PluginTeam) {
+        teams.remove(getTeam(team))
+        clearTeamState(team)
+    }
+
     fun getOrCreateTournamentTeam(team: PluginTeam): TournamentTeam? {
         val state = team.getTournamentState()
         val tournamentTeam = state.tournamentTeam ?: run {
@@ -422,15 +428,19 @@ class Tournament(
         if (teamJoinListener != null || teamLeaveListener != null) return
         teamJoinListener = ::onPlayerJoinTeam
         teamLeaveListener = ::onPlayerLeaveTeam
+        teamRemoveListener = ::onTeamRemoved
         TeamEvents.afterJoin.subscribe(teamJoinListener!!)
         TeamEvents.afterLeave.subscribe(teamLeaveListener!!)
+        TeamEvents.teamRemove.subscribe(teamRemoveListener!!)
     }
 
     private fun unregisterTeamEventListeners() {
         teamJoinListener?.let { TeamEvents.afterJoin.unsubscribe(it) }
         teamLeaveListener?.let { TeamEvents.afterLeave.unsubscribe(it) }
+        teamRemoveListener?.let { TeamEvents.teamRemove.subscribe(it) }
         teamJoinListener = null
         teamLeaveListener = null
+        teamRemoveListener = null
     }
 
     private fun clearPlayer(player: PluginPlayer) {
@@ -447,7 +457,7 @@ class Tournament(
 
     private fun setWorldBorderAndSpawn(location: Location) {
         val world = location.world ?: return
-        world.setSpawnLocation(centerBlock(location))
+        world.spawnLocation = centerBlock(location)
         world.worldBorder.center = Location(world, location.x, location.y, location.z)
     }
 

@@ -90,6 +90,7 @@ class PluginTeam private constructor(
         fun removeTeam(team: PluginTeam) {
             team.players.toList().forEach { team.tryKickPlayerFromTeam(it) }
             teams.remove(team.id)
+            TeamEvents.emitTeamRemove(team)
         }
 
         fun createNewTeam(creator: PluginPlayer): PluginTeam {
