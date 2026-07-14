@@ -13,12 +13,6 @@ abstract class BukkitEventBasedTournamentEvent<T : Event, V>(
     private val eventClass: KClass<T>,
     private val getHandlerListMethod: () -> HandlerList
 ) : TournamentEvent<V> {
-    override fun subscribe(tournament: Tournament): TournamentEventInstance<V> {
-        return subscribeBukkit(tournament) { event, callback -> handle(tournament, event, callback) }
-    }
-
-    protected abstract fun handle(tournament: Tournament, event: T, callback: (V) -> Unit)
-
     protected fun subscribeBukkit(
         tournament: Tournament,
         handler: (T, (V) -> Unit) -> Unit

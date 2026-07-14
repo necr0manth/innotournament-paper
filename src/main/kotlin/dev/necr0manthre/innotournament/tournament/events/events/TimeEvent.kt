@@ -19,11 +19,4 @@ class TimeEvent(private val time: Long) :
             }
         }
     }
-
-    override fun handle(
-        tournament: Tournament,
-        event: ServerTickEndEvent,
-        callback: (Unit) -> Unit
-    ) {
-    }
 }

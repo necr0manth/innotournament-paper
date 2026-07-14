@@ -22,11 +22,4 @@ class PlayerTickEvent(val period: Int) :
             }
         }
     }
-
-    override fun handle(
-        tournament: Tournament,
-        event: ServerTickEndEvent,
-        callback: (PlayerHolder) -> Unit
-    ) {
-    }
 }
