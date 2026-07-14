@@ -41,7 +41,6 @@ class Tournament(
 
     private class PlayerTournamentStateImpl : PlayerTournamentState {
         var tournamentPlayer: TournamentPlayer? = null
-        var initialized: Boolean = false
 
         override val tournament: Tournament?
             get() = tournamentPlayer?.tournament
@@ -69,6 +68,11 @@ class Tournament(
     private fun clearTeamState(team: PluginTeam) {
         val state = team.getTournamentState()
         if (state.tournamentTeam?.tournament === this) state.tournamentTeam = null
+    }
+
+    private fun isPlayerBoundToAnotherTournament(player: PluginPlayer): Boolean {
+        val tournament = player.getTournamentState().tournament
+        return tournament != null && tournament !== this
     }
 
     private val onPrepareEvent = SimpleEvent<Unit>()
@@ -178,7 +182,8 @@ class Tournament(
 
     fun checkPlayer(player: Player) {
         val pluginPlayer = PluginPlayer.get(player)
-        val tournamentPlayer = getOrCreateTournamentPlayer(pluginPlayer) ?: return
+        if (isPlayerBoundToAnotherTournament(pluginPlayer)) return
+
         if (phase == TournamentPhase.PREPARED && !player.hasPermission("innotournament.admin")) {
             player.gameMode = preStartGameMode
             return
@@ -192,10 +197,9 @@ class Tournament(
             return
         }
 
-
-        val playerState = pluginPlayer.getTournamentState()
-        if (!playerState.initialized) {
-            playerState.initialized = setupPlayer(tournamentPlayer)
+        val tournamentPlayer = getOrCreateTournamentPlayer(pluginPlayer) ?: return
+        if (!tournamentPlayer.initialized) {
+            tournamentPlayer.initialized = setupPlayer(tournamentPlayer)
         }
 
         if (tournamentPlayer.lives == 0) {
@@ -375,11 +379,13 @@ class Tournament(
 
             @EventHandler
             fun onRespawn(event: PlayerRespawnEvent) {
-                if (getPlayer(PluginPlayer.get(event.player)) == null)
-                    return
+                val pluginPlayer = PluginPlayer.get(event.player)
+                if (isPlayerBoundToAnotherTournament(pluginPlayer)) return
+
                 if (phase == TournamentPhase.PREPARED) {
                     event.respawnLocation = tournamentPreSpawn
                 } else if (phase == TournamentPhase.STARTED) {
+                    if (getPlayer(pluginPlayer) == null) return
                     event.respawnLocation = tournamentSpawn
                 }
             }

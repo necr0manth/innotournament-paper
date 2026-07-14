@@ -11,6 +11,7 @@ class TournamentPlayer internal constructor(
     val tournament: Tournament
 ) {
     var lives: Int = 0
+    internal var initialized: Boolean = false
 
     val uuid: UUID
         get() = pluginPlayer.uuid
