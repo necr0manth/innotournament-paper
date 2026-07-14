@@ -7,6 +7,7 @@ import io.papermc.paper.plugin.bootstrap.BootstrapContext
 import io.papermc.paper.plugin.bootstrap.PluginBootstrap
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents
 
+@Suppress("UnstableApiUsage")
 internal class InnotournamentBootstrap : PluginBootstrap {
 
     override fun bootstrap(context: BootstrapContext) {
