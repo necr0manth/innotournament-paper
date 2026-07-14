@@ -28,8 +28,8 @@ class TournamentTeam internal constructor(
     val displayName: Component
         get() = pluginTeam.displayName
 
-    val players: List<TournamentPlayer>
-        get() = pluginTeam.players.map { tournament.getPlayer(it) ?: error("Team and players have different tournaments") }
+    val players: List<PluginPlayer>
+        get() = pluginTeam.players
 
     fun contains(player: PluginPlayer): Boolean {
         return pluginTeam.players.contains(player)

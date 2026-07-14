@@ -178,6 +178,7 @@ class Tournament(
 
     fun checkPlayer(player: Player) {
         val pluginPlayer = PluginPlayer.get(player)
+        val tournamentPlayer = getOrCreateTournamentPlayer(pluginPlayer) ?: return
         if (phase == TournamentPhase.PREPARED && !player.hasPermission("innotournament.admin")) {
             player.gameMode = preStartGameMode
             return
@@ -191,9 +192,8 @@ class Tournament(
             return
         }
 
-        val tournamentPlayer = getOrCreateTournamentPlayer(pluginPlayer) ?: return
-        val playerState = pluginPlayer.getTournamentState()
 
+        val playerState = pluginPlayer.getTournamentState()
         if (!playerState.initialized) {
             playerState.initialized = setupPlayer(tournamentPlayer)
         }
@@ -387,12 +387,14 @@ class Tournament(
     }
 
     private fun tick() {
-        if (phase != TournamentPhase.STARTED) return
-        checkAllTeams()
-        Bukkit.getOnlinePlayers().forEach(::checkPlayer)
+        if (phase != TournamentPhase.CREATED && phase != TournamentPhase.ENDED) {
+            Bukkit.getOnlinePlayers().forEach(::checkPlayer)
+            checkAllTeams()
+        }
 
+        if (phase != TournamentPhase.STARTED) return
         val aliveTeams = teams.filter { team ->
-            team.players.any { it.lives > 0 }
+            team.players.any { (getPlayer(it)?.lives ?: 0) > 0 }
         }
         if (aliveTeams.size > 1) return
 
@@ -437,7 +439,7 @@ class Tournament(
     private fun unregisterTeamEventListeners() {
         teamJoinListener?.let { TeamEvents.afterJoin.unsubscribe(it) }
         teamLeaveListener?.let { TeamEvents.afterLeave.unsubscribe(it) }
-        teamRemoveListener?.let { TeamEvents.teamRemove.subscribe(it) }
+        teamRemoveListener?.let { TeamEvents.teamRemove.unsubscribe(it) }
         teamJoinListener = null
         teamLeaveListener = null
         teamRemoveListener = null

@@ -84,7 +84,8 @@ object InnoTournamentEvents {
                                 ?: return@subscribeBukkit
                         val targetPlayer =
                             tournament.getPlayer(PluginPlayer.get(event.player)) ?: return@subscribeBukkit
-                        callback(PlayerKilled(sourcePlayer, targetPlayer))
+                        if (targetPlayer.lives > 0)
+                            callback(PlayerKilled(sourcePlayer, targetPlayer))
                     }
                 }
             }

@@ -15,7 +15,8 @@ class AdvancementEvent(private val advancement: Advancement) :
     ) {
     override fun subscribe(tournament: Tournament): TournamentEventInstance<PlayerHolder> {
         return subscribeBukkit(tournament) { event, callback ->
-            callback(PlayerHolder(tournament.getPlayer(PluginPlayer.get(event.player)) ?: return@subscribeBukkit))
+            if (event.advancement == advancement)
+                callback(PlayerHolder(tournament.getPlayer(PluginPlayer.get(event.player)) ?: return@subscribeBukkit))
         }
     }
 }
