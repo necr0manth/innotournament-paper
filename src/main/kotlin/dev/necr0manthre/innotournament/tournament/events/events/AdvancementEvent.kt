@@ -1,5 +1,6 @@
 package dev.necr0manthre.innotournament.tournament.events.events
 
+import dev.necr0manthre.innotournament.players.PluginPlayer
 import dev.necr0manthre.innotournament.tournament.Tournament
 import dev.necr0manthre.innotournament.tournament.events.BukkitEventBasedTournamentEvent
 import dev.necr0manthre.innotournament.tournament.events.TournamentEventInstance
@@ -14,7 +15,7 @@ class AdvancementEvent(private val advancement: Advancement) :
     ) {
     override fun subscribe(tournament: Tournament): TournamentEventInstance<PlayerHolder> {
         return subscribeBukkit(tournament) { event, callback ->
-            callback(PlayerHolder(tournament.getPlayer(event.player)))
+            callback(PlayerHolder(tournament.getPlayer(PluginPlayer.get(event.player)) ?: return@subscribeBukkit))
         }
     }
 }

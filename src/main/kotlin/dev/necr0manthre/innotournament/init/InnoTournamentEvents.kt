@@ -1,9 +1,11 @@
 package dev.necr0manthre.innotournament.init
 
+import dev.necr0manthre.innotournament.players.PluginPlayer
 import dev.necr0manthre.innotournament.tournament.Tournament
 import dev.necr0manthre.innotournament.tournament.events.BukkitEventBasedTournamentEvent
 import dev.necr0manthre.innotournament.tournament.events.LambdaTournamentEvent
 import dev.necr0manthre.innotournament.tournament.events.TournamentEvent
+import dev.necr0manthre.innotournament.tournament.events.TournamentEventInstance
 import dev.necr0manthre.innotournament.tournament.events.event_data.PlayerKilled
 import dev.necr0manthre.innotournament.tournament.events.events.AdvancementEvent
 import dev.necr0manthre.innotournament.tournament.events.events.PlayerTickEvent
@@ -75,15 +77,14 @@ object InnoTournamentEvents {
                 PlayerDeathEvent::class,
                 PlayerDeathEvent::getHandlerList
             ) {
-                override fun handle(
-                    tournament: Tournament,
-                    event: PlayerDeathEvent,
-                    callback: (PlayerKilled) -> Unit
-                ) {
-                    val source = event.entity.killer ?: return
-                    val target = tournament.getPlayer(event.entity)
-                    if (target.lives > 0) {
-                        callback(PlayerKilled(tournament.getPlayer(source), target))
+                override fun subscribe(tournament: Tournament): TournamentEventInstance<PlayerKilled> {
+                    return subscribeBukkit(tournament) { event, callback ->
+                        val sourcePlayer =
+                            tournament.getPlayer(PluginPlayer.get(event.player.killer ?: return@subscribeBukkit))
+                                ?: return@subscribeBukkit
+                        val targetPlayer =
+                            tournament.getPlayer(PluginPlayer.get(event.player)) ?: return@subscribeBukkit
+                        callback(PlayerKilled(sourcePlayer, targetPlayer))
                     }
                 }
             }

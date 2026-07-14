@@ -5,6 +5,7 @@ import com.mojang.brigadier.arguments.StringArgumentType
 import dev.necr0manthre.innotournament.Innotournament
 import dev.necr0manthre.innotournament.tournament.Tournament
 import dev.necr0manthre.innotournament.tournament.TournamentData
+import dev.necr0manthre.innotournament.tournament.TournamentPhase
 import dev.necr0manthre.innotournament.util.CommandRegisterer
 import io.papermc.paper.command.brigadier.CommandSourceStack
 import io.papermc.paper.command.brigadier.Commands
@@ -79,7 +80,7 @@ object TournamentCommand {
                 .executes { ctx ->
                     val tournament = ensureTournament(ctx) ?: return@executes 0
                     try {
-                        if (tournament.phase == 0) tournament.prepare()
+                        if (tournament.phase == TournamentPhase.CREATED) tournament.prepare()
                         tournament.start()
                         ctx.source.sender.sendMessage(Component.text("Tournament started", NamedTextColor.GREEN))
                     } catch (e: Exception) {
