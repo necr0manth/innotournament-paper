@@ -1,25 +1,14 @@
 package dev.necr0manthre.innotournament.tournament
 
+import com.destroystokyo.paper.event.server.ServerTickEndEvent
 import dev.necr0manthre.innotournament.Innotournament
 import dev.necr0manthre.innotournament.players.PluginPlayer
 import dev.necr0manthre.innotournament.teams.PluginTeam
 import dev.necr0manthre.innotournament.teams.events.PlayerTeamEvent
 import dev.necr0manthre.innotournament.teams.events.TeamEvents
-import dev.necr0manthre.innotournament.tournament.events.EventSubscriptionView
-import dev.necr0manthre.innotournament.tournament.events.ITournamentEventListener
-import dev.necr0manthre.innotournament.tournament.events.SimpleEvent
-import dev.necr0manthre.innotournament.tournament.events.TournamentEvent
-import dev.necr0manthre.innotournament.tournament.events.TournamentEventInstance
-import dev.necr0manthre.innotournament.tournament.events.asSubscriptionView
-import com.destroystokyo.paper.event.server.ServerTickEndEvent
+import dev.necr0manthre.innotournament.tournament.events.*
 import net.kyori.adventure.text.Component
-import org.bukkit.Bukkit
-import org.bukkit.GameMode
-import org.bukkit.Location
-import org.bukkit.Material
-import org.bukkit.NamespacedKey
-import org.bukkit.Server
-import org.bukkit.World
+import org.bukkit.*
 import org.bukkit.block.structure.Mirror
 import org.bukkit.block.structure.StructureRotation
 import org.bukkit.entity.Player
@@ -28,7 +17,7 @@ import org.bukkit.event.HandlerList
 import org.bukkit.event.Listener
 import org.bukkit.event.entity.PlayerDeathEvent
 import org.bukkit.event.player.PlayerRespawnEvent
-import java.util.Random
+import java.util.*
 import kotlin.math.min
 
 class Tournament(
@@ -42,6 +31,46 @@ class Tournament(
     var teamScoreModifiers: DoubleArray,
     val lastTeamScore: Float
 ) {
+    sealed interface PlayerTournamentState {
+        val tournament: Tournament?
+    }
+
+    sealed interface TeamTournamentState {
+        val tournament: Tournament?
+    }
+
+    private class PlayerTournamentStateImpl : PlayerTournamentState {
+        var tournamentPlayer: TournamentPlayer? = null
+
+        override val tournament: Tournament?
+            get() = tournamentPlayer?.tournament
+    }
+
+    private class TeamTournamentStateImpl : TeamTournamentState {
+        var tournamentTeam: TournamentTeam? = null
+
+        override val tournament: Tournament?
+            get() = tournamentTeam?.tournament
+    }
+
+    private fun setPlayerState(player: PluginPlayer, tournamentPlayer: TournamentPlayer) {
+        (player.tournamentState as PlayerTournamentStateImpl).tournamentPlayer = tournamentPlayer
+    }
+
+    private fun clearPlayerState(player: PluginPlayer, tournament: Tournament) {
+        val state = player.tournamentState as PlayerTournamentStateImpl
+        if (state.tournamentPlayer?.tournament === tournament) state.tournamentPlayer = null
+    }
+
+    private fun setTeamState(team: PluginTeam, tournamentTeam: TournamentTeam) {
+        (team.tournamentState as TeamTournamentStateImpl).tournamentTeam = tournamentTeam
+    }
+
+    private fun clearTeamState(team: PluginTeam, tournament: Tournament) {
+        val state = team.tournamentState as TeamTournamentStateImpl
+        if (state.tournamentTeam?.tournament === tournament) state.tournamentTeam = null
+    }
+
     private val onPrepareEvent = SimpleEvent<Any?>()
     private val onStartEvent = SimpleEvent<Any?>()
     private val onEndEvent = SimpleEvent<Any?>()
@@ -259,13 +288,13 @@ class Tournament(
 
     fun getPlayer(player: PluginPlayer): TournamentPlayer {
         return players.getOrPut(player) {
-            TournamentPlayer(player, this).also { TournamentSystem.setPlayerState(player, it) }
+            TournamentPlayer(player, this).also { setPlayerState(player, it) }
         }
     }
 
     fun getTeam(team: PluginTeam): TournamentTeam {
         return teams.getOrPut(team) {
-            TournamentTeam(team, this).also { TournamentSystem.setTeamState(team, it) }
+            TournamentTeam(team, this).also { setTeamState(team, it) }
         }
     }
 
@@ -386,12 +415,12 @@ class Tournament(
 
     private fun clearPlayer(player: PluginPlayer) {
         players.remove(player)
-        TournamentSystem.clearPlayerState(player, this)
+        clearPlayerState(player, this)
     }
 
     private fun clearParticipationState() {
-        players.keys.toList().forEach { TournamentSystem.clearPlayerState(it, this) }
-        teams.keys.toList().forEach { TournamentSystem.clearTeamState(it, this) }
+        players.keys.toList().forEach { clearPlayerState(it, this) }
+        teams.keys.toList().forEach { clearTeamState(it, this) }
         players.clear()
         teams.clear()
     }
@@ -431,5 +460,9 @@ class Tournament(
         fun get(server: Any?): Tournament? {
             return get()
         }
+
+        fun createPlayerState(): PlayerTournamentState = PlayerTournamentStateImpl()
+
+        fun createTeamState(): TeamTournamentState = TeamTournamentStateImpl()
     }
 }

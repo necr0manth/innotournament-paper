@@ -4,7 +4,7 @@ import dev.necr0manthre.innotournament.players.PluginPlayer
 import dev.necr0manthre.innotournament.teams.events.PlayerTeamEvent
 import dev.necr0manthre.innotournament.teams.events.TeamEvents
 import dev.necr0manthre.innotournament.teams.invites.InviteSystem
-import dev.necr0manthre.innotournament.tournament.TournamentSystem
+import dev.necr0manthre.innotournament.tournament.Tournament
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 
@@ -20,7 +20,7 @@ class PluginTeam private constructor(
         private set
     val players: MutableList<PluginPlayer> = mutableListOf()
     val invites = InviteSystem.createInvites()
-    val tournamentState = TournamentSystem.createTeamState()
+    val tournamentState = Tournament.createTeamState()
 
     fun tryKickPlayerFromTeam(player: PluginPlayer): PlayerKickResult {
         if (player.team !== this) return PlayerKickResult.NOT_IN_TEAM

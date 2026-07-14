@@ -3,7 +3,7 @@ package dev.necr0manthre.innotournament.players
 import dev.necr0manthre.innotournament.teams.PluginTeam
 import dev.necr0manthre.innotournament.teams.TeamSystem
 import dev.necr0manthre.innotournament.teams.invites.InviteSystem
-import dev.necr0manthre.innotournament.tournament.TournamentSystem
+import dev.necr0manthre.innotournament.tournament.Tournament
 import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.OfflinePlayer
@@ -15,7 +15,7 @@ class PluginPlayer private constructor(val uuid: UUID) {
         private set
     val teamState = TeamSystem.createPlayerState()
     val invites = InviteSystem.createInvites()
-    val tournamentState = TournamentSystem.createPlayerState()
+    val tournamentState = Tournament.createPlayerState()
 
     val team: PluginTeam?
         get() = teamState.team
