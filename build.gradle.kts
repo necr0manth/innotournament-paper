@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 plugins {
     kotlin("jvm") version "2.4.0-Beta2"
     id("io.papermc.paperweight.userdev") version "2.0.0-beta.21"
@@ -14,11 +16,15 @@ repositories {
 configurations.compileOnly {
     extendsFrom(configurations.runtimeDownload.get())
 }
+configurations.testImplementation {
+    extendsFrom(configurations.runtimeDownload.get())
+}
 
 dependencies {
     paperweight.paperDevBundle("26.1.2.build.+")
     implementation("xyz.jpenilla:gremlin-runtime:0.0.9")
     runtimeDownload("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+    runtimeDownload("net.kyori:adventure-nbt:4.26.1")
     testImplementation("org.junit.jupiter:junit-jupiter:5.13.4")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.13.4")
 }
@@ -38,9 +44,45 @@ kotlin {
     jvmToolchain(25)
 }
 
+// Client resource pack is a separate, reproducible ZIP; it is not placed in the plugin JAR.
+val packageResourcePack = tasks.register<Zip>("packageResourcePack") {
+    group = "build"
+    description = "Package the InnoTournament resource pack for Minecraft 26.1.2."
+    from(layout.projectDirectory.dir("resource-pack"))
+    destinationDirectory.set(layout.buildDirectory.dir("libs"))
+    archiveFileName.set("innotournament-resource-pack-26.1.2.zip")
+    isReproducibleFileOrder = true
+    isPreserveFileTimestamps = false
+}
+
+val resourcePackSha1 = tasks.register("resourcePackSha1") {
+    group = "build"
+    description = "Write the SHA-1 of the exact resource-pack ZIP for server.properties."
+    dependsOn(packageResourcePack)
+
+    val archive = packageResourcePack.flatMap { it.archiveFile }
+    val sha1File = layout.buildDirectory.file("libs/innotournament-resource-pack-26.1.2.zip.sha1")
+    inputs.file(archive)
+    outputs.file(sha1File)
+
+    doLast {
+        val digest = MessageDigest.getInstance("SHA-1")
+        archive.get().asFile.inputStream().buffered().use { input ->
+            val buffer = ByteArray(8192)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        val hash = digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        sha1File.get().asFile.writeText("$hash\n")
+    }
+}
+
 tasks {
     build {
-        dependsOn(shadowJar)
+        dependsOn(shadowJar, resourcePackSha1)
     }
 
     test {
