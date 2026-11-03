@@ -1,7 +1,6 @@
 package dev.necr0manthre.innotournament.players
 
 import dev.necr0manthre.innotournament.teams.PluginTeam
-import dev.necr0manthre.innotournament.teams.TeamSystem
 import dev.necr0manthre.innotournament.teams.invites.InviteSystem
 import dev.necr0manthre.innotournament.tournament.Tournament
 import net.kyori.adventure.text.Component
@@ -11,9 +10,9 @@ import org.bukkit.entity.Player
 import java.util.UUID
 
 class PluginPlayer private constructor(val uuid: UUID) {
-    var player: Player? = null
-        private set
-    val teamState = TeamSystem.createPlayerState()
+    val player: Player?
+        get() = Bukkit.getPlayer(uuid)
+    val teamState: PluginTeam.PlayerTeamState = PluginTeam.createPlayerState()
     val invites = InviteSystem.createInvites()
     val tournamentState = Tournament.createPlayerState()
 
@@ -29,17 +28,10 @@ class PluginPlayer private constructor(val uuid: UUID) {
     val displayName: Component
         get() = player?.displayName() ?: Component.text(name)
 
-    internal fun updateOnlinePlayer(player: Player) {
-        this.player = player
-    }
-
     companion object {
         private val players = HashMap<UUID, PluginPlayer>()
 
-        fun get(player: Player): PluginPlayer {
-            return players.getOrPut(player.uniqueId) { PluginPlayer(player.uniqueId) }
-                .also { it.updateOnlinePlayer(player) }
-        }
+        fun get(player: Player): PluginPlayer = get(player.uniqueId)
 
         fun get(uuid: UUID): PluginPlayer {
             return players.getOrPut(uuid) { PluginPlayer(uuid) }

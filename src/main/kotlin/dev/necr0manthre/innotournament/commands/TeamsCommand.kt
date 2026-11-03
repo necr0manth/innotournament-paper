@@ -7,6 +7,7 @@ import com.mojang.brigadier.builder.RequiredArgumentBuilder
 import com.mojang.brigadier.context.CommandContext
 import dev.necr0manthre.innotournament.players.PluginPlayer
 import dev.necr0manthre.innotournament.teams.PluginTeam
+import dev.necr0manthre.innotournament.teams.TeamCreateResult
 import dev.necr0manthre.innotournament.teams.invites.InviteSystem
 import dev.necr0manthre.innotournament.tournament.Tournament
 import dev.necr0manthre.innotournament.util.CommandRegisterer
@@ -41,22 +42,18 @@ object TeamsCommand {
                             .append(team.displayName)
                     )
 
-                    if (team.players.isEmpty()) {
-                        PluginTeam.removeTeam(team)
-                    } else {
-                        team.players.forEach { member ->
-                            member.player?.sendMessage(
-                                Component.empty()
-                                    .append(player.displayName)
-                                    .append(Component.text(" left from your team"))
-                            )
-                        }
-                        if (oldOwner != team.owner) {
-                            team.owner?.player?.sendMessage(
-                                Component.text("You are owner of team ", NamedTextColor.GOLD)
-                                    .append(team.displayName)
-                            )
-                        }
+                    team.players.forEach { member ->
+                        member.player?.sendMessage(
+                            Component.empty()
+                                .append(player.displayName)
+                                .append(Component.text(" left from your team"))
+                        )
+                    }
+                    if (oldOwner != team.owner) {
+                        team.owner?.player?.sendMessage(
+                            Component.text("You are owner of team ", NamedTextColor.GOLD)
+                                .append(team.displayName)
+                        )
                     }
                     updateSidebars()
                     Command.SINGLE_SUCCESS
@@ -136,7 +133,14 @@ object TeamsCommand {
                                 return@executes 1
                             }
 
-                            val team = PluginTeam.createNewTeam(creator, id, displayName)
+                            val result = PluginTeam.createNewTeam(creator, id, displayName)
+                            val team = (result as? TeamCreateResult.Created)?.team
+                            if (team == null) {
+                                ctx.source.sender.sendMessage(
+                                    Component.text("Unable to create team: $result", NamedTextColor.RED)
+                                )
+                                return@executes 1
+                            }
                             ctx.source.sender.sendMessage(
                                 Component.text("Created team ").append(team.displayName)
                             )
@@ -212,7 +216,20 @@ object TeamsCommand {
                                 return@executes 1
                             }
 
-                            val team = team(ctx) ?: PluginTeam.createNewTeam(inviter)
+                            val existingTeam = team(ctx)
+                            val team = if (existingTeam != null) {
+                                existingTeam
+                            } else {
+                                when (val created = PluginTeam.createNewTeam(inviter)) {
+                                    is TeamCreateResult.Created -> created.team
+                                    else -> {
+                                        ctx.source.sender.sendMessage(
+                                            Component.text("Unable to create team: $created", NamedTextColor.RED)
+                                        )
+                                        return@executes 1
+                                    }
+                                }
+                            }
                             InviteSystem.invitePlayerToTeam(invited, team, 1000)
                             invited.player?.sendMessage(
                                 Component.empty()
@@ -358,7 +375,7 @@ object TeamsCommand {
             Commands.literal("removeAll")
                 .requires { source -> source.sender.hasPermission("minecraft.command.team") }
                 .executes { ctx ->
-                    PluginTeam.getAllTeams().toList().forEach(PluginTeam::removeTeam)
+                    PluginTeam.getAllTeams().forEach(PluginTeam::removeTeamFromCommand)
                     ctx.source.sender.sendMessage(Component.text("All teams removed"))
                     Command.SINGLE_SUCCESS
                 }

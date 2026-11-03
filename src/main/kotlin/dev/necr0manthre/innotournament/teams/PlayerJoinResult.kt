@@ -1,6 +1,6 @@
 package dev.necr0manthre.innotournament.teams
 
-class PlayerJoinResult private constructor(private val kickResult: PlayerKickResult?) {
+class PlayerJoinResult private constructor(val kickResult: PlayerKickResult?) {
     val isSuccess: Boolean
         get() = this === SUCCESS
 
@@ -11,6 +11,8 @@ class PlayerJoinResult private constructor(private val kickResult: PlayerKickRes
         val ALREADY_IN_TEAM: PlayerJoinResult = PlayerJoinResult(null)
         @JvmField
         val CANCELLED: PlayerJoinResult = PlayerJoinResult(null)
+        @JvmField
+        val TEAM_REMOVED: PlayerJoinResult = PlayerJoinResult(null)
         @JvmStatic
         fun cannotKick(kickResult: PlayerKickResult?): PlayerJoinResult {
             return PlayerJoinResult(kickResult)
