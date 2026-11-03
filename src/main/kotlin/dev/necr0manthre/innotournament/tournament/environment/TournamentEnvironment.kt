@@ -10,16 +10,15 @@ import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
 
-/**
- * World-stage effects for one tournament run. Box placement, preload and resource ownership
- * are separate, unfinished parts of the environment and are deliberately not exposed here.
- * Constructing this object does not read or mutate Bukkit world state.
- */
+/** World-stage effects and owned chunk leases for one tournament run. */
 class TournamentEnvironment(
     private val worlds: ResolvedWorldBindings,
     private val preStartSpawn: WorldPoint,
-    private val gameSpawn: WorldPoint
+    private val gameSpawn: WorldPoint,
+    private val chunkTickets: PluginChunkTickets
 ) {
+    private val preloadLeases = mutableMapOf<Pair<Int, Int>, ChunkLease>()
+
     init {
         require(preStartSpawn.world === worlds.preStartWorld) { "Pre-start point belongs to another world" }
         require(gameSpawn.world === worlds.gameWorld) { "Game point belongs to another world" }
@@ -45,12 +44,25 @@ class TournamentEnvironment(
         require(endMaxSize.isFinite() && endMaxSize >= 1.0) { "Invalid End world border maximum" }
         validateCenters(centers)
 
+        acquirePreloadChunks()
+
         check(worlds.preStartWorld.setSpawnLocation(pos.x, pos.y, pos.z)) {
             "Could not set pre-start world spawn"
         }
         centers.filter { it.world !== worlds.endWorld }.forEach { it.apply() }
         end.border.setSize(endMaxSize)
         end.apply()
+    }
+
+    /** Release only this environment's retained chunk leases. */
+    fun releaseResources() {
+        requireMainThread()
+        val leases = preloadLeases.entries.iterator()
+        while (leases.hasNext()) {
+            val entry = leases.next()
+            entry.value.release()
+            leases.remove()
+        }
     }
 
     /** Set the game spawn and all vanilla-related centers using the original dimension branches. */
@@ -163,6 +175,20 @@ class TournamentEnvironment(
         return BlockPosition(coordinate(point.x), coordinate(point.y), coordinate(point.z))
     }
 
+    private fun acquirePreloadChunks() {
+        val gamePos = blockPosition(gameSpawn)
+        val chunkX = Math.floorDiv(gamePos.x, 16)
+        val chunkZ = Math.floorDiv(gamePos.z, 16)
+        for (x in chunkX - PRELOAD_RADIUS..chunkX + PRELOAD_RADIUS) {
+            for (z in chunkZ - PRELOAD_RADIUS..chunkZ + PRELOAD_RADIUS) {
+                val chunk = x to z
+                if (chunk !in preloadLeases) {
+                    preloadLeases[chunk] = chunkTickets.acquire(worlds.gameWorld, x, z)
+                }
+            }
+        }
+    }
+
     private fun requireMainThread() {
         // In a real server every effect must be on its primary thread. A null server permits
         // isolated tests with lightweight World proxies; it cannot occur during live gameplay.
@@ -179,6 +205,7 @@ class TournamentEnvironment(
     private data class SizeChange(val world: World, val border: WorldBorder, val size: Double)
 
     private companion object {
+        const val PRELOAD_RADIUS = 32
         val OVERWORLD: NamespacedKey = NamespacedKey.minecraft("overworld")
         val NETHER: NamespacedKey = NamespacedKey.minecraft("the_nether")
     }
