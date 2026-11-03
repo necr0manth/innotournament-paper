@@ -4,7 +4,7 @@ import com.destroystokyo.paper.event.server.ServerTickEndEvent
 import dev.necr0manthre.innotournament.Innotournament
 import dev.necr0manthre.innotournament.players.PluginPlayer
 import dev.necr0manthre.innotournament.teams.PluginTeam
-import dev.necr0manthre.innotournament.teams.events.PlayerTeamEvent
+import dev.necr0manthre.innotournament.teams.events.TeamChange
 import dev.necr0manthre.innotournament.teams.events.TeamEvents
 import dev.necr0manthre.innotournament.tournament.events.*
 import net.kyori.adventure.text.Component
@@ -97,8 +97,8 @@ class Tournament(
     private val players = HashSet<TournamentPlayer>()
     private val teams = HashSet<TournamentTeam>()
     private var listener: Listener? = null
-    private var teamJoinListener: ((PlayerTeamEvent) -> Unit)? = null
-    private var teamLeaveListener: ((PlayerTeamEvent) -> Unit)? = null
+    private var teamJoinListener: ((TeamChange) -> Unit)? = null
+    private var teamLeaveListener: ((TeamChange) -> Unit)? = null
     private var teamRemoveListener: ((PluginTeam) -> Unit)? = null
 
     fun getServer(): Server = Bukkit.getServer()
@@ -253,45 +253,48 @@ class Tournament(
         updateSidebars()
     }
 
+    // The result set includes deleted history; only exact live registry objects receive places.
+    private fun currentStandings(): List<TournamentTeam> = teams
+        .filter { PluginTeam.getTeamById(it.pluginTeam.id) === it.pluginTeam }
+        .sortedByDescending { it.score }
+
     fun getTopTeams(n: Int): MutableList<TournamentTeam> {
-        val sorted = teams
-            .sortedByDescending { it.score }
-            .toMutableList()
+        val sorted = currentStandings().toMutableList()
         return sorted.subList(0, min(n, sorted.size))
     }
 
-    fun onPlayerJoinTeam(event: PlayerTeamEvent) {
+    fun onPlayerJoinTeam(event: TeamChange) {
         if (phase != TournamentPhase.STARTED) return
-        val pluginTeam = event.team ?: return
-        val previousSize = (pluginTeam.players.size - 1).coerceAtLeast(0)
-        val oldModifier = scoreModifier(previousSize)
-        val team = getTeam(pluginTeam) ?: return
-        if (oldModifier != 0.0) team.score *= scoreModifier(pluginTeam.players.size) / oldModifier
-        event.player.player?.let(::checkPlayer)
+        val pluginTeam = event.team
         checkTeam(pluginTeam)
+        val team = getTeam(pluginTeam) ?: return
+        val oldModifier = scoreModifier(event.sizeBefore)
+        if (oldModifier != 0.0) {
+            team.score *= scoreModifier(event.sizeAfter) / oldModifier
+        }
+        event.player.player?.let(::checkPlayer)
         updateSidebars()
     }
 
-    fun onPlayerLeaveTeam(event: PlayerTeamEvent) {
+    fun onPlayerLeaveTeam(event: TeamChange) {
         if (phase != TournamentPhase.STARTED) return
-        val pluginTeam = event.team ?: return
-        val team = pluginTeam.getTournamentState().tournamentTeam ?: return
-        if (pluginTeam.players.isEmpty()) {
-            team.score = 0.0
-        } else {
-            val oldModifier = scoreModifier(pluginTeam.players.size + 1)
-            if (oldModifier != 0.0) team.score *= scoreModifier(pluginTeam.players.size) / oldModifier
-        }
-        checkTeam(pluginTeam)
+        // A completed leave expires that runtime participation. A later join gets
+        // a fresh TournamentPlayer and its normal setup, even on an A -> B move.
+        clearPlayer(event.player)
+        // Leaving never changes the historical score of the departing team.
         updateSidebars()
     }
 
     fun onTeamRemoved(team: PluginTeam) {
-        teams.remove(getTeam(team))
+        // Preserve a finished tournament's historical links until remove().
+        if (phase == TournamentPhase.ENDED) return
+        // Keep the accumulated TournamentTeam in the result set, but release
+        // the permanently disposed team's live back-reference.
         clearTeamState(team)
     }
 
     fun getOrCreateTournamentTeam(team: PluginTeam): TournamentTeam? {
+        if (PluginTeam.getTeamById(team.id) !== team) return null
         val state = team.getTournamentState()
         val tournamentTeam = state.tournamentTeam ?: run {
             val newTournamentTeam = TournamentTeam(team, this)
@@ -415,11 +418,12 @@ class Tournament(
     }
 
     private fun broadcastFinalStandings() {
-        val standings = teams.sortedByDescending { it.score }
-        if (standings.isEmpty()) {
-            Bukkit.broadcast(Component.text("Tournament ended"))
-            return
-        }
+        Bukkit.broadcast(finalStandingsMessage())
+    }
+
+    private fun finalStandingsMessage(): Component {
+        val standings = currentStandings()
+        if (standings.isEmpty()) return Component.text("Tournament ended")
 
         val message = Component.text()
             .append(Component.text("Tournament ended. Results: "))
@@ -429,7 +433,7 @@ class Tournament(
                 .append(team.displayName)
                 .append(Component.text(" (${team.score})"))
         }
-        Bukkit.broadcast(message.build())
+        return message.build()
     }
 
     private fun registerTeamEventListeners() {
@@ -439,13 +443,13 @@ class Tournament(
         teamRemoveListener = ::onTeamRemoved
         TeamEvents.afterJoin.subscribe(teamJoinListener!!)
         TeamEvents.afterLeave.subscribe(teamLeaveListener!!)
-        TeamEvents.teamRemove.subscribe(teamRemoveListener!!)
+        TeamEvents.afterRemove.subscribe(teamRemoveListener!!)
     }
 
     private fun unregisterTeamEventListeners() {
         teamJoinListener?.let { TeamEvents.afterJoin.unsubscribe(it) }
         teamLeaveListener?.let { TeamEvents.afterLeave.unsubscribe(it) }
-        teamRemoveListener?.let { TeamEvents.teamRemove.unsubscribe(it) }
+        teamRemoveListener?.let { TeamEvents.afterRemove.unsubscribe(it) }
         teamJoinListener = null
         teamLeaveListener = null
         teamRemoveListener = null

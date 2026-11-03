@@ -19,6 +19,8 @@ dependencies {
     paperweight.paperDevBundle("26.1.2.build.+")
     implementation("xyz.jpenilla:gremlin-runtime:0.0.9")
     runtimeDownload("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.13.4")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.13.4")
 }
 
 paperPluginYaml {
@@ -37,6 +39,16 @@ tasks {
         dependsOn(shadowJar)
     }
 
+    test {
+        useJUnitPlatform()
+        classpath += configurations["compileClasspath"]
+        testLogging.showStandardStreams = true
+    }
+
+    check {
+        dependsOn("verifyTeamModel")
+    }
+
     runServer {
         // Configure the Minecraft version for our task.
         // This is the only required configuration besides applying the plugin.
@@ -44,4 +56,16 @@ tasks {
         minecraftVersion("26.1.2")
         jvmArgs("-Xms2G", "-Xmx2G", "-Dcom.mojang.eula.agree=true")
     }
+}
+
+// The paperweight API is compile-only for main, but needed by the model check too.
+configurations.named("testCompileOnly") {
+    extendsFrom(configurations.getByName("compileOnly"))
+}
+
+// Keep the focused model check available by name; standard test/check/build run it too.
+tasks.register("verifyTeamModel") {
+    group = "verification"
+    description = "Check team membership, event guards, ownership, snapshots and deletion"
+    dependsOn(tasks.named("test"))
 }
