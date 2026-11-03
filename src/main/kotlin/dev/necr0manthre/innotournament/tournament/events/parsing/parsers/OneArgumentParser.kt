@@ -9,7 +9,7 @@ class OneArgumentParser<T>(
 ) : IParser<String, T> {
     override fun tryParse(str: String): T? {
         val str = str.trim()
-        val args = str.substringAfter("$name ")
+        val args = str.removePrefix("$name ")
         if (args == str)
             return null
         if (greedy) {

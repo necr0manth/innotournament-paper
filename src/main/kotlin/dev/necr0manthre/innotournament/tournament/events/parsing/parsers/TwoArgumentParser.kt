@@ -6,7 +6,7 @@ class TwoArgumentParser<T>(private val name: String?, private val factory: (Stri
     IParser<String, T> {
     override fun tryParse(str: String): T? {
         val str = str.trim()
-        val args = str.substringAfter("$name ")
+        val args = str.removePrefix("$name ")
         if (args == str)
             return null
         val argsArray = args.split(" ").dropLastWhile { it.isEmpty() }.toTypedArray()
