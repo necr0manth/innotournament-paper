@@ -18,7 +18,10 @@ class PluginTeam private constructor(
     id: String,
     name: Component
 ) {
-    sealed interface PlayerTeamState { val team: PluginTeam? }
+    sealed interface PlayerTeamState {
+        val team: PluginTeam?
+    }
+
     private class PlayerTeamStateImpl : PlayerTeamState {
         var value: PluginTeam? = null
         var changing: Boolean = false
@@ -58,10 +61,13 @@ class PluginTeam private constructor(
             check(!state(player).changing) { "Player cannot be changed from a team-event handler" }
             state(player).changing = true
         }
-        private fun release(player: PluginPlayer) { state(player).changing = false }
+
+        private fun release(player: PluginPlayer) {
+            state(player).changing = false
+        }
     }
 
-class TeamManager(snapshot: TeamsSnapshot? = null) {
+    class TeamManager(snapshot: TeamsSnapshot? = null) {
         private val teams = LinkedHashMap<String, PluginTeam>()
         val events = TeamEvents(this)
 
@@ -88,10 +94,15 @@ class TeamManager(snapshot: TeamsSnapshot? = null) {
         val afterRemove: EventSubscriptionView<PluginTeam> = afterRemoveEvent.asSubscriptionView()
         val beforeRename: EventSubscriptionView<TeamRenameEvent> = beforeRenameEvent.asSubscriptionView()
         val afterRename: EventSubscriptionView<TeamRenameChange> = afterRenameEvent.asSubscriptionView()
-        val beforeOwnerTransfer: EventSubscriptionView<TeamOwnerTransferEvent> = beforeOwnerTransferEvent.asSubscriptionView()
+        val beforeOwnerTransfer: EventSubscriptionView<TeamOwnerTransferEvent> =
+            beforeOwnerTransferEvent.asSubscriptionView()
         val afterOwnerTransfer: EventSubscriptionView<TeamOwnerChange> = afterOwnerTransferEvent.asSubscriptionView()
 
-        private fun <T> withChange(affectedTeams: Collection<PluginTeam>, affectedPlayers: Collection<PluginPlayer>, action: () -> T): T {
+        private fun <T> withChange(
+            affectedTeams: Collection<PluginTeam>,
+            affectedPlayers: Collection<PluginPlayer>,
+            action: () -> T
+        ): T {
             val teamsToLock = affectedTeams.distinct()
             val playersToLock = affectedPlayers.toSet()
             check(teamsToLock.none { it.changing } && playersToLock.none(PluginTeam::isChanging)) {
@@ -99,7 +110,9 @@ class TeamManager(snapshot: TeamsSnapshot? = null) {
             }
             teamsToLock.forEach { it.changing = true }
             playersToLock.forEach(PluginTeam::reserve)
-            try { return action() } finally {
+            try {
+                return action()
+            } finally {
                 teamsToLock.forEach { it.changing = false }
                 playersToLock.forEach(PluginTeam::release)
             }
@@ -124,7 +137,7 @@ class TeamManager(snapshot: TeamsSnapshot? = null) {
             if (before.canceled) return PlayerKickResult.CANCELLED
             val sizeBefore = team.members.size
             check(team.members.remove(player)) { "Player's team and member list disagree" }
-            PluginTeam.state(player).value = null
+            state(player).value = null
             if (team.ownerValue === player) team.ownerValue = team.members.firstOrNull()
             publishTeamEvent(afterLeaveEvent, TeamChange(player, team, sizeBefore, team.members.size))
             return PlayerKickResult.SUCCESS
@@ -152,14 +165,14 @@ class TeamManager(snapshot: TeamsSnapshot? = null) {
             val sizeBefore = team.members.size
             check(!team.members.contains(player)) { "Duplicate team member" }
             team.members.add(player)
-            PluginTeam.state(player).value = team
+            state(player).value = team
             if (team.ownerValue == null) team.ownerValue = player
             publishTeamEvent(afterJoinEvent, TeamChange(player, team, sizeBefore, team.members.size))
             return PlayerJoinResult.SUCCESS
         }
 
         fun transferOwnership(team: PluginTeam, player: PluginPlayer): Boolean =
-            if (team.manager !== this) false else withChange(listOf(team), listOf(player)) {
+            team.manager === this && withChange(listOf(team), listOf(player)) {
                 if (!team.isActive || player.team !== team || !team.members.contains(player)) return@withChange false
                 if (team.ownerValue === player) return@withChange true
                 val before = TeamOwnerTransferEvent(team, team.ownerValue, player)
@@ -174,7 +187,7 @@ class TeamManager(snapshot: TeamsSnapshot? = null) {
             }
 
         fun changeTeamName(team: PluginTeam, name: Component): Boolean =
-            if (team.manager !== this) false else withChange(listOf(team), emptyList()) {
+            team.manager === this && withChange(listOf(team), emptyList()) {
                 if (!team.isActive) return@withChange false
                 val newId = idFromDisplayName(name)
                 if (newId != team.id && teams.containsKey(newId)) return@withChange false
@@ -199,7 +212,7 @@ class TeamManager(snapshot: TeamsSnapshot? = null) {
             }
 
         fun createNewTeam(creator: PluginPlayer): TeamCreateResult {
-            check(!PluginTeam.isChanging(creator) && creator.team?.changing != true) {
+            check(!isChanging(creator) && creator.team?.changing != true) {
                 "Player cannot be changed from a team-event handler"
             }
             if (creator.team != null) return TeamCreateResult.ALREADY_IN_TEAM
@@ -209,35 +222,35 @@ class TeamManager(snapshot: TeamsSnapshot? = null) {
 
         fun createNewTeam(creator: PluginPlayer, id: String, displayName: Component): TeamCreateResult =
             withChange(emptyList(), listOf(creator)) {
-            require(id.isNotBlank()) { "Team id must not be blank" }
-            if (creator.team != null) return@withChange TeamCreateResult.ALREADY_IN_TEAM
-            if (teams.containsKey(id)) return@withChange TeamCreateResult.ID_ALREADY_EXISTS
+                require(id.isNotBlank()) { "Team id must not be blank" }
+                if (creator.team != null) return@withChange TeamCreateResult.ALREADY_IN_TEAM
+                if (teams.containsKey(id)) return@withChange TeamCreateResult.ID_ALREADY_EXISTS
 
-            val beforeCreate = TeamCreateEvent(creator, id, displayName)
-            publishTeamEvent(beforeCreateEvent, beforeCreate)
-            if (beforeCreate.canceled) return@withChange TeamCreateResult.CANCELLED
-            if (teams.containsKey(id)) return@withChange TeamCreateResult.ID_ALREADY_EXISTS
+                val beforeCreate = TeamCreateEvent(creator, id, displayName)
+                publishTeamEvent(beforeCreateEvent, beforeCreate)
+                if (beforeCreate.canceled) return@withChange TeamCreateResult.CANCELLED
+                if (teams.containsKey(id)) return@withChange TeamCreateResult.ID_ALREADY_EXISTS
 
-            val team = PluginTeam(this, id, displayName)
-            try {
-            team.changing = true
-            val beforeJoin = PlayerTeamEvent(creator, team, 0)
-            publishTeamEvent(beforeJoinEvent, beforeJoin)
-            if (beforeJoin.canceled) return@withChange TeamCreateResult.CANCELLED
-            if (teams.containsKey(id)) return@withChange TeamCreateResult.ID_ALREADY_EXISTS
+                val team = PluginTeam(this, id, displayName)
+                try {
+                    team.changing = true
+                    val beforeJoin = PlayerTeamEvent(creator, team, 0)
+                    publishTeamEvent(beforeJoinEvent, beforeJoin)
+                    if (beforeJoin.canceled) return@withChange TeamCreateResult.CANCELLED
+                    if (teams.containsKey(id)) return@withChange TeamCreateResult.ID_ALREADY_EXISTS
 
-            // Nothing has been published yet: both vetoes precede this single commit.
-            team.members.add(creator)
-            team.ownerValue = creator
-            PluginTeam.state(creator).value = team
-            teams[id] = team
-            publishTeamEvent(afterCreateEvent, TeamCreated(creator, team))
-            publishTeamEvent(afterJoinEvent, TeamChange(creator, team, 0, 1))
-            TeamCreateResult.Created(team)
-            } finally {
-                team.changing = false
+                    // Nothing has been published yet: both vetoes precede this single commit.
+                    team.members.add(creator)
+                    team.ownerValue = creator
+                    state(creator).value = team
+                    teams[id] = team
+                    publishTeamEvent(afterCreateEvent, TeamCreated(creator, team))
+                    publishTeamEvent(afterJoinEvent, TeamChange(creator, team, 0, 1))
+                    TeamCreateResult.Created(team)
+                } finally {
+                    team.changing = false
+                }
             }
-        }
 
         /** Domain removal: cancellation of either removal or any leave vetoes everything. */
         fun removeTeam(team: PluginTeam): Boolean {
@@ -250,8 +263,7 @@ class TeamManager(snapshot: TeamsSnapshot? = null) {
         }
 
         private fun removeTeamLocked(team: PluginTeam, ignoreCancellation: Boolean): Boolean =
-            if (team.manager !== this) false
-            else withChange(listOf(team), team.members) { removeTeamCommitted(team, ignoreCancellation) }
+            team.manager === this && withChange(listOf(team), team.members) { removeTeamCommitted(team, ignoreCancellation) }
 
         private fun removeTeamCommitted(team: PluginTeam, ignoreCancellation: Boolean): Boolean {
             if (team.removed || teams[team.id] !== team) return false
@@ -269,7 +281,7 @@ class TeamManager(snapshot: TeamsSnapshot? = null) {
             // Complete all reverse links and registry changes before the first after-event.
             team.members.clear()
             team.ownerValue = null
-            for (member in departing) PluginTeam.state(member).value = null
+            for (member in departing) state(member).value = null
             team.removed = true
             teams.remove(team.id)
             for ((index, member) in departing.withIndex()) {
@@ -281,7 +293,9 @@ class TeamManager(snapshot: TeamsSnapshot? = null) {
         }
 
         /** A snapshot is decoded before a new manager is constructed. */
-        init { if (snapshot != null) restore(snapshot) }
+        init {
+            if (snapshot != null) restore(snapshot)
+        }
 
         private fun restore(snapshot: TeamsSnapshot) {
             require(snapshot.version == 1) { "Unsupported teams snapshot version: ${snapshot.version}" }
@@ -311,14 +325,14 @@ class TeamManager(snapshot: TeamsSnapshot? = null) {
             }
             restored.values.forEach { team ->
                 team.members.forEach { member ->
-                    check(!PluginTeam.isChanging(member)) { "Player is being changed: ${member.uuid}" }
-                    check(PluginTeam.state(member).value == null) { "Player already belongs to a team: ${member.uuid}" }
+                    check(!isChanging(member)) { "Player is being changed: ${member.uuid}" }
+                    check(state(member).value == null) { "Player already belongs to a team: ${member.uuid}" }
                 }
             }
 
             teams.putAll(restored)
             restored.values.forEach { team ->
-                team.members.forEach { member -> PluginTeam.state(member).value = team }
+                team.members.forEach { member -> state(member).value = team }
             }
         }
 
@@ -345,7 +359,7 @@ class TeamManager(snapshot: TeamsSnapshot? = null) {
 
         private fun <T> immutableCopy(values: Collection<T>): List<T> =
             Collections.unmodifiableList(ArrayList(values))
-}
+    }
 }
 
 typealias TeamManager = PluginTeam.TeamManager
