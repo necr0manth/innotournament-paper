@@ -5,7 +5,7 @@ import dev.necr0manthre.innotournament.Innotournament
 import dev.necr0manthre.innotournament.players.PluginPlayer
 import dev.necr0manthre.innotournament.teams.PluginTeam
 import dev.necr0manthre.innotournament.teams.events.TeamChange
-import dev.necr0manthre.innotournament.teams.events.TeamEvents
+import dev.necr0manthre.innotournament.teams.TeamManager
 import dev.necr0manthre.innotournament.tournament.events.*
 import net.kyori.adventure.text.Component
 import org.bukkit.*
@@ -21,6 +21,7 @@ import java.util.*
 import kotlin.math.min
 
 class Tournament(
+    private val teamManager: TeamManager,
     val tournamentSpawn: Location,
     var tournamentPreSpawn: Location,
     var startBoxStructureResourceLocation: NamespacedKey?,
@@ -208,15 +209,17 @@ class Tournament(
     }
 
     fun checkAllTeams() {
-        PluginTeam.getAllTeams().forEach(::checkTeam)
+        teamManager.getAllTeams().forEach(::checkTeam)
     }
 
-    fun checkTeam(team: PluginTeam) {
+    fun checkTeam(team: PluginTeam) = checkTeam(team, resetAcceptAll = true)
+
+    private fun checkTeam(team: PluginTeam, resetAcceptAll: Boolean) {
         if (phase != TournamentPhase.STARTED) return
         val tournamentTeam = getOrCreateTournamentTeam(team) ?: return
         val state = team.getTournamentState()
         if (!state.initialized) {
-            setupTeam(tournamentTeam)
+            setupTeam(tournamentTeam, resetAcceptAll)
             state.initialized = true
         }
     }
@@ -237,9 +240,13 @@ class Tournament(
     }
 
     fun setupTeam(team: TournamentTeam) {
+        setupTeam(team, resetAcceptAll = true)
+    }
+
+    private fun setupTeam(team: TournamentTeam, resetAcceptAll: Boolean) {
         team.score = 0.0
         team.advancements.clear()
-        team.acceptAll = false
+        if (resetAcceptAll) team.acceptAll = false
     }
 
     fun addScoresToPlayer(player: TournamentPlayer?, score: Double) {
@@ -255,7 +262,7 @@ class Tournament(
 
     // The result set includes deleted history; only exact live registry objects receive places.
     private fun currentStandings(): List<TournamentTeam> = teams
-        .filter { PluginTeam.getTeamById(it.pluginTeam.id) === it.pluginTeam }
+        .filter { teamManager.getTeamById(it.pluginTeam.id) === it.pluginTeam }
         .sortedByDescending { it.score }
 
     fun getTopTeams(n: Int): MutableList<TournamentTeam> {
@@ -266,7 +273,9 @@ class Tournament(
     fun onPlayerJoinTeam(event: TeamChange) {
         if (phase != TournamentPhase.STARTED) return
         val pluginTeam = event.team
-        checkTeam(pluginTeam)
+        // A new team starts with acceptAll=false; initialize its tournament state
+        // without writing that public team property inside the join callback.
+        checkTeam(pluginTeam, resetAcceptAll = false)
         val team = getTeam(pluginTeam) ?: return
         val oldModifier = scoreModifier(event.sizeBefore)
         if (oldModifier != 0.0) {
@@ -294,7 +303,7 @@ class Tournament(
     }
 
     fun getOrCreateTournamentTeam(team: PluginTeam): TournamentTeam? {
-        if (PluginTeam.getTeamById(team.id) !== team) return null
+        if (teamManager.getTeamById(team.id) !== team) return null
         val state = team.getTournamentState()
         val tournamentTeam = state.tournamentTeam ?: run {
             val newTournamentTeam = TournamentTeam(team, this)
@@ -441,15 +450,15 @@ class Tournament(
         teamJoinListener = ::onPlayerJoinTeam
         teamLeaveListener = ::onPlayerLeaveTeam
         teamRemoveListener = ::onTeamRemoved
-        TeamEvents.afterJoin.subscribe(teamJoinListener!!)
-        TeamEvents.afterLeave.subscribe(teamLeaveListener!!)
-        TeamEvents.afterRemove.subscribe(teamRemoveListener!!)
+        teamManager.events.afterJoin.subscribe(teamJoinListener!!)
+        teamManager.events.afterLeave.subscribe(teamLeaveListener!!)
+        teamManager.events.afterRemove.subscribe(teamRemoveListener!!)
     }
 
     private fun unregisterTeamEventListeners() {
-        teamJoinListener?.let { TeamEvents.afterJoin.unsubscribe(it) }
-        teamLeaveListener?.let { TeamEvents.afterLeave.unsubscribe(it) }
-        teamRemoveListener?.let { TeamEvents.afterRemove.unsubscribe(it) }
+        teamJoinListener?.let { teamManager.events.afterJoin.unsubscribe(it) }
+        teamLeaveListener?.let { teamManager.events.afterLeave.unsubscribe(it) }
+        teamRemoveListener?.let { teamManager.events.afterRemove.unsubscribe(it) }
         teamJoinListener = null
         teamLeaveListener = null
         teamRemoveListener = null

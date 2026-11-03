@@ -3,6 +3,7 @@ package dev.necr0manthre.innotournament.commands
 import com.mojang.brigadier.Command
 import com.mojang.brigadier.arguments.StringArgumentType
 import dev.necr0manthre.innotournament.Innotournament
+import dev.necr0manthre.innotournament.teams.TeamManager
 import dev.necr0manthre.innotournament.tournament.Tournament
 import dev.necr0manthre.innotournament.tournament.TournamentData
 import dev.necr0manthre.innotournament.tournament.TournamentPhase
@@ -16,7 +17,7 @@ import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 
-object TournamentCommand {
+class TournamentCommand(private val teamManager: TeamManager) {
     private var selectedTournamentPath: Path? = null
 
     fun register(registrar: Commands) {
@@ -115,7 +116,7 @@ object TournamentCommand {
         }
 
         return try {
-            TournamentData.load(path).createTournament(path).also { Tournament.setTournament(it) }
+            TournamentData.load(path).createTournament(path, teamManager).also { Tournament.setTournament(it) }
         } catch (e: IOException) {
             ctx.source.sender.sendMessage(Component.text("Cannot read tournament data: ${e.message}", NamedTextColor.RED))
             null

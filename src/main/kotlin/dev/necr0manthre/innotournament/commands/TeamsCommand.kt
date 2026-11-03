@@ -8,6 +8,7 @@ import com.mojang.brigadier.context.CommandContext
 import dev.necr0manthre.innotournament.players.PluginPlayer
 import dev.necr0manthre.innotournament.teams.PluginTeam
 import dev.necr0manthre.innotournament.teams.TeamCreateResult
+import dev.necr0manthre.innotournament.teams.TeamManager
 import dev.necr0manthre.innotournament.teams.invites.InviteSystem
 import dev.necr0manthre.innotournament.tournament.Tournament
 import dev.necr0manthre.innotournament.util.CommandRegisterer
@@ -23,7 +24,7 @@ import net.kyori.adventure.text.format.TextDecoration
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.entity.Player
 
-object TeamsCommand {
+class TeamsCommand(private val teamManager: TeamManager) {
     fun register(
         registrar: Commands
     ) {
@@ -77,7 +78,7 @@ object TeamsCommand {
                         .suggestTeams()
                         .executes { ctx ->
                             val player = player(ctx) ?: return@executes 1
-                            val team = PluginTeam.getTeamById(StringArgumentType.getString(ctx, "team"))
+                            val team = teamManager.getTeamById(StringArgumentType.getString(ctx, "team"))
                                 ?: run {
                                     ctx.source.sender.sendMessage(Component.text("Team not found", NamedTextColor.RED))
                                     return@executes 1
@@ -128,12 +129,12 @@ object TeamsCommand {
 
                             val displayName = ctx.getArgument("displayName", Component::class.java)
                             val id = idFromDisplayName(displayName)
-                            if (PluginTeam.getTeamById(id) != null) {
+                            if (teamManager.getTeamById(id) != null) {
                                 ctx.source.sender.sendMessage(Component.text("Team already exists", NamedTextColor.RED))
                                 return@executes 1
                             }
 
-                            val result = PluginTeam.createNewTeam(creator, id, displayName)
+                            val result = teamManager.createNewTeam(creator, id, displayName)
                             val team = (result as? TeamCreateResult.Created)?.team
                             if (team == null) {
                                 ctx.source.sender.sendMessage(
@@ -220,7 +221,7 @@ object TeamsCommand {
                             val team = if (existingTeam != null) {
                                 existingTeam
                             } else {
-                                when (val created = PluginTeam.createNewTeam(inviter)) {
+                                when (val created = teamManager.createNewTeam(inviter)) {
                                     is TeamCreateResult.Created -> created.team
                                     else -> {
                                         ctx.source.sender.sendMessage(
@@ -375,7 +376,7 @@ object TeamsCommand {
             Commands.literal("removeAll")
                 .requires { source -> source.sender.hasPermission("minecraft.command.team") }
                 .executes { ctx ->
-                    PluginTeam.getAllTeams().forEach(PluginTeam::removeTeamFromCommand)
+                    teamManager.getAllTeams().forEach { teamManager.removeTeamFromCommand(it) }
                     ctx.source.sender.sendMessage(Component.text("All teams removed"))
                     Command.SINGLE_SUCCESS
                 }
@@ -494,7 +495,7 @@ object TeamsCommand {
     }
 
     private fun executeListMembers(source: CommandSourceStack, teamId: String): Int {
-        val team = PluginTeam.getTeamById(teamId)
+        val team = teamManager.getTeamById(teamId)
         if (team == null) {
             source.sender.sendMessage(Component.text("Team not found", NamedTextColor.RED))
             return 0
@@ -519,7 +520,7 @@ object TeamsCommand {
     }
 
     private fun executeListTeams(source: CommandSourceStack): Int {
-        val teams = PluginTeam.getAllTeams()
+        val teams = teamManager.getAllTeams()
         if (teams.isEmpty()) {
             source.sender.sendMessage(Component.text("There are no teams"))
         } else {
@@ -582,7 +583,7 @@ object TeamsCommand {
 
     private fun <S, T> RequiredArgumentBuilder<S, T>.suggestTeams(): RequiredArgumentBuilder<S, T> {
         return suggests { _, builder ->
-            PluginTeam.getAllTeams().forEach { builder.suggest(it.id) }
+            teamManager.getAllTeams().forEach { builder.suggest(it.id) }
             builder.buildFuture()
         }
     }
