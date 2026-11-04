@@ -21,7 +21,7 @@ object InnoGiveCommand {
     /** Subnode for a shared `/inno` tree; does not register or initialize the plugin. */
     fun build(): LiteralArgumentBuilder<CommandSourceStack> =
         Commands.literal("give")
-            .requires { it.sender.hasPermission("minecraft.command.function") }
+            .requires { it.sender.hasPermission("innotournament.admin") }
             .executes { ctx ->
                 error(ctx, USAGE)
             }
