@@ -24,7 +24,7 @@ import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 
-class TeamsCommand(private val teamManager: TeamManager) {
+class TeamsCommand(private val teamManager: TeamManager, private val invites: InviteSystem) {
     fun register(
         registrar: Commands
     ) {
@@ -84,16 +84,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                                     return@executes 0
                                 }
 
-                            if (!team.acceptAll && !InviteSystem.isPlayerInvitedToTeam(player, team)) {
-                                ctx.source.sender.sendMessage(
-                                    Component.text(
-                                        "You can't join this team",
-                                        NamedTextColor.RED
-                                    )
-                                )
-                                return@executes 0
-                            }
-                            if (!team.tryAddPlayerToTeam(player).isSuccess) {
+                            if (!invites.requestJoin(player, team)) {
                                 ctx.source.sender.sendMessage(
                                     Component.text(
                                         "You can't join this team",
@@ -103,7 +94,6 @@ class TeamsCommand(private val teamManager: TeamManager) {
                                 return@executes 0
                             }
 
-                            InviteSystem.rejectInvite(player, team)
                             sendJoinPlayer(player, team)
                             updateSidebars()
                             Command.SINGLE_SUCCESS
@@ -176,7 +166,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                             if (checkOwner(ctx) == null) return@executes 0
                             val target = getTargetPlayer(ctx) ?: return@executes 0
 
-                            if (!InviteSystem.isPlayerInvitedToTeam(target, team)) {
+                            if (!invites.isPlayerInvitedToTeam(target, team)) {
                                 ctx.source.sender.sendMessage(
                                     Component.text(
                                         "This player has no active invitation to your team",
@@ -186,7 +176,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                                 return@executes 0
                             }
 
-                            InviteSystem.rejectInvite(target, team)
+                            invites.revokeInvite(target, team)
                             ctx.source.sender.sendMessage(
                                 Component.text("You revoked the invitation for ")
                                     .append(target.displayName)
@@ -233,7 +223,13 @@ class TeamsCommand(private val teamManager: TeamManager) {
                                     }
                                 }
                             }
-                            InviteSystem.invitePlayerToTeam(invited, team, 1000)
+                            val previousInvite = invites.getInvite(invited, team)
+                            val invitation = invites.invitePlayerToTeam(invited, team, 1000)
+                            if (invitation == null) {
+                                ctx.source.sender.sendMessage(Component.text("Unable to invite player", NamedTextColor.RED))
+                                return@executes 0
+                            }
+                            if (invitation === previousInvite) return@executes Command.SINGLE_SUCCESS
                             invited.player?.sendMessage(
                                 Component.empty()
                                     .append(inviter.displayName)
