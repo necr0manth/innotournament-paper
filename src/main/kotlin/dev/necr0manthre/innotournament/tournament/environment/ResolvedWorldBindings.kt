@@ -2,6 +2,7 @@ package dev.necr0manthre.innotournament.tournament.environment
 
 import org.bukkit.NamespacedKey
 import org.bukkit.World
+import java.util.UUID
 
 /** Concrete worlds selected before any tournament world effects. */
 class ResolvedWorldBindings(
@@ -11,6 +12,10 @@ class ResolvedWorldBindings(
     val netherWorld: World,
     val endWorld: World
 ) {
+    /** World IDs that belong to this tournament's gameplay environment. */
+    val gameplayWorldIds: Set<UUID>
+        get() = listOf(gameWorld, normalWorld, netherWorld, endWorld).mapTo(linkedSetOf()) { it.uid }
+
     companion object {
         /**
          * Resolve configured dimension keys and the three vanilla-related worlds exactly.

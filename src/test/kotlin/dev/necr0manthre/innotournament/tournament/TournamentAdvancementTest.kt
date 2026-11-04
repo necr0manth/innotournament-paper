@@ -3,6 +3,7 @@ package dev.necr0manthre.innotournament.tournament
 import dev.necr0manthre.innotournament.players.PluginPlayer
 import dev.necr0manthre.innotournament.teams.PluginTeam
 import dev.necr0manthre.innotournament.teams.TeamCreateResult
+import dev.necr0manthre.innotournament.teams.events.TeamChange
 import dev.necr0manthre.innotournament.tournament.events.EventPlan
 import dev.necr0manthre.innotournament.tournament.events.event_data.PlayerHolder
 import dev.necr0manthre.innotournament.tournament.events.event_data.TeamAdvancement
@@ -133,11 +134,106 @@ class TournamentAdvancementTest {
         }
     }
 
+    @Test
+    fun newOnlineAndPendingLoginParticipationsReceiveTeamProgressWithoutNewRewards() {
+        val fixture = Fixture()
+        try {
+            val source = fixture.addMember("adv-reset-source")
+            val sourceProgress = fixture.progress(setOf("first"))
+            fixture.bindProgress(source, sourceProgress)
+            val sourceEntry = fixture.prepare(source)
+            val notices = mutableListOf<Any>()
+            fixture.tournament.realPlayerAdvancements.subscribe(notices::add)
+            fixture.tournament.firstTeamAdvancements.subscribe(notices::add)
+            fixture.complete(source)
+            val expectedNotices = notices.toList()
+            fixture.tournament.addScores(fixture.tournament.teams().single(), 12.0)
+
+            val joinListener: (TeamChange) -> Unit = fixture.tournament::onPlayerJoinTeam
+            fixture.manager.afterJoin.subscribe(joinListener)
+
+            val onlineJoin = fixture.member("adv-reset-online")
+            val onlineProgress = fixture.progress(emptySet())
+            fixture.bindProgress(onlineJoin, onlineProgress)
+            fixture.team.tryAddPlayerToTeam(onlineJoin)
+
+            assertSame(sourceEntry, fixture.tournament.getPlayer(source))
+            assertTrue(checkNotNull(fixture.tournament.getPlayer(onlineJoin)).prepared)
+            assertEquals(setOf("first"), onlineProgress.awarded)
+            assertEquals(expectedNotices, notices)
+            assertEquals(12.0, fixture.tournament.teams().single().score)
+
+            val pendingLogin = fixture.member("adv-reset-pending", isOnline = false)
+            val pendingProgress = fixture.progress(emptySet())
+            fixture.bindProgress(pendingLogin, pendingProgress)
+            fixture.team.tryAddPlayerToTeam(pendingLogin)
+            val pendingParticipation = checkNotNull(fixture.tournament.getPlayer(pendingLogin))
+            assertTrue(!pendingParticipation.prepared)
+            assertTrue(pendingProgress.awarded.isEmpty())
+
+            fixture.setOnline(pendingLogin, true)
+            fixture.tournament.checkPlayer(fixture.player(pendingLogin))
+
+            assertSame(pendingParticipation, fixture.tournament.getPlayer(pendingLogin))
+            assertTrue(pendingParticipation.prepared)
+            assertEquals(setOf("first"), pendingProgress.awarded)
+            assertEquals(expectedNotices, notices)
+            assertEquals(12.0, fixture.tournament.teams().single().score)
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
+    fun completedLeaveImmediatelySpectatesAndFreshJoinResetsWithoutStaleLeaveClearingIt() {
+        val fixture = Fixture()
+        try {
+            val player = fixture.member("leave-and-rejoin")
+            val joinListener: (TeamChange) -> Unit = fixture.tournament::onPlayerJoinTeam
+            val leaveListener: (TeamChange) -> Unit = fixture.tournament::onPlayerLeaveTeam
+            fixture.manager.afterJoin.subscribe(joinListener)
+            fixture.manager.afterLeave.subscribe(leaveListener)
+            fixture.bindProgress(player, fixture.progress(emptySet()))
+            assertTrue(fixture.team.tryAddPlayerToTeam(player).isSuccess)
+
+            val original = checkNotNull(fixture.tournament.getPlayer(player))
+            assertTrue(original.prepared)
+            assertEquals(GameMode.SURVIVAL, fixture.gameMode(player))
+            fixture.tournament.addScores(original.team, 9.0)
+
+            assertTrue(fixture.team.tryKickPlayerFromTeam(player).isSuccess)
+            assertEquals(null, fixture.tournament.getPlayer(player))
+            assertEquals(GameMode.SPECTATOR, fixture.gameMode(player))
+            assertEquals(9.0, original.team.score)
+
+            val otherOwner = fixture.member("other-team-owner")
+            fixture.bindProgress(otherOwner, fixture.progress(emptySet()))
+            val otherTeam = (fixture.manager.createNewTeam(
+                otherOwner, "other-team", Component.text("other-team")
+            ) as TeamCreateResult.Created).team
+            assertTrue(otherTeam.tryAddPlayerToTeam(player).isSuccess)
+            val fresh = checkNotNull(fixture.tournament.getPlayer(player))
+            assertTrue(fresh !== original)
+            assertTrue(fresh.prepared)
+            assertEquals(3, fresh.lives)
+            assertEquals(GameMode.SURVIVAL, fixture.gameMode(player))
+
+            fixture.tournament.onPlayerLeaveTeam(TeamChange(player, fixture.team, 1, 0))
+            assertSame(fresh, fixture.tournament.getPlayer(player))
+            assertEquals(GameMode.SURVIVAL, fixture.gameMode(player))
+            assertEquals(9.0, original.team.score)
+        } finally {
+            fixture.close()
+        }
+    }
+
     private inner class Fixture : AutoCloseable {
         private val online = LinkedHashMap<UUID, Player>()
+        private val onlineIds = LinkedHashSet<UUID>()
         private val progressByPlayer = LinkedHashMap<UUID, AdvancementProgress>()
+        private val gameModes = LinkedHashMap<UUID, GameMode>()
         private val previousServer = setServer()
-        private val manager = PluginTeam.TeamManager()
+        val manager = PluginTeam.TeamManager()
         private val owner = member("adv-owner")
         val team = (manager.createNewTeam(owner, "adv-team", Component.text("adv-team")) as
             TeamCreateResult.Created).team
@@ -160,6 +256,14 @@ class TournamentAdvancementTest {
             check(team.tryAddPlayerToTeam(player).isSuccess)
             return player
         }
+
+        fun setOnline(player: PluginPlayer, value: Boolean) {
+            if (value) onlineIds.add(player.uuid) else onlineIds.remove(player.uuid)
+        }
+
+        fun player(player: PluginPlayer): Player = online.getValue(player.uuid)
+
+        fun gameMode(player: PluginPlayer): GameMode? = gameModes[player.uuid]
 
         fun prepare(player: PluginPlayer): TournamentPlayer {
             tournament.checkTeam(team)
@@ -191,17 +295,29 @@ class TournamentAdvancementTest {
                 .apply { isAccessible = true }.invoke(handler, online.getValue(player.uuid))
         }
 
-        private fun member(name: String): PluginPlayer {
+        fun member(name: String, isOnline: Boolean = true): PluginPlayer {
             val uuid = UUID.randomUUID()
-            val player: Player = proxy { method, _ ->
+            val player: Player = proxy { method, args ->
                 when (method) {
                     "getUniqueId" -> uuid
                     "getAdvancementProgress" -> progressByPlayer[uuid]
                     "getName" -> name
+                    "getMaxHealth" -> 20.0
+                    "setHealth", "setFoodLevel", "setSaturation", "setRespawnLocation",
+                    "setVelocity", "setExp", "setLevel", "setTotalExperience" -> null
+                    "clearActivePotionEffects" -> true
+                    "setGameMode" -> { gameModes[uuid] = args!![0] as GameMode; null }
+                    "getGameMode" -> gameModes[uuid]
+                    "getInventory" -> proxy<org.bukkit.inventory.PlayerInventory> { inventoryMethod, _ ->
+                        if (inventoryMethod == "clear") null else unexpected(inventoryMethod)
+                    }
+                    "getServer" -> serverProxy
+                    "teleport" -> true
                     else -> null
                 }
             }
             online[uuid] = player
+            if (isOnline) onlineIds.add(uuid)
             return PluginPlayer.get(uuid)
         }
 
@@ -210,17 +326,20 @@ class TournamentAdvancementTest {
         }
 
         private fun setServer(): Any? {
-            val server: Server = proxy { method, args ->
+            serverProxy = proxy { method, args ->
                 when (method) {
-                    "getPlayer" -> online[args!![0] as UUID]
+                    "getPlayer" -> online[args!![0] as UUID].takeIf { args[0] in onlineIds }
                     "getOfflinePlayer" -> null
                     "getAdvancement" -> advancement
+                    "advancementIterator" -> listOf(advancement).iterator()
                     else -> null
                 }
             }
             val field = Bukkit::class.java.getDeclaredField("server").apply { isAccessible = true }
-            return field.get(null).also { field.set(null, server) }
+            return field.get(null).also { field.set(null, serverProxy) }
         }
+
+        private lateinit var serverProxy: Server
 
         override fun close() {
             Bukkit::class.java.getDeclaredField("server").apply { isAccessible = true }
@@ -235,6 +354,7 @@ class TournamentAdvancementTest {
                 "getAwardedCriteria" -> awarded.toSet()
                 "getRemainingCriteria" -> setOf("first", "second") - awarded
                 "isDone" -> awarded.isNotEmpty()
+                "revokeCriteria" -> awarded.remove(args!![0] as String)
                 "awardCriteria" -> {
                     val changed = awarded.add(args!![0] as String)
                     if (changed && awarded.isNotEmpty()) onComplete?.invoke()

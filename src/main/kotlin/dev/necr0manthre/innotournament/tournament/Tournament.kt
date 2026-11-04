@@ -85,6 +85,7 @@ class Tournament(
             check(getPlayer(pluginPlayer) === this && pluginPlayer.player === player &&
                 pluginPlayer.team === team.pluginTeam) { "Tournament participation changed during its reset" }
             preparation = ParticipationPreparation.READY
+            advancementHandler.syncCurrentParticipation(this)
             afterParticipationReset(player)
         }
     }
@@ -175,6 +176,13 @@ class Tournament(
                 val player = participation.player ?: continue
                 syncPlayer(participation, team, player, facts)
             }
+        }
+
+        fun syncCurrentParticipation(participation: TournamentPlayer) {
+            if (currentPreparedPlayer(participation.pluginPlayer) !== participation) return
+            val team = currentTeam(participation) ?: return
+            val player = participation.player ?: return
+            syncPlayer(participation, team, player, teamFacts[team]?.values.orEmpty().toList())
         }
 
         private fun syncPlayer(
@@ -528,7 +536,11 @@ class Tournament(
         if (phase != TournamentPhase.STARTED) return
         // A completed leave expires that runtime participation. A later join gets
         // a fresh TournamentPlayer and its normal setup, even on an A -> B move.
-        clearPlayer(event.player, event.team)
+        val participation = event.player.getTournamentState().participation
+        if (participation?.tournament === this && participation.team.pluginTeam === event.team) {
+            clearPlayer(event.player, event.team)
+            event.player.player?.gameMode = GameMode.SPECTATOR
+        }
         updateFinishEligibility()
         // Leaving never changes the historical score of the departing team.
     }

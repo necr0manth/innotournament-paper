@@ -197,7 +197,7 @@ class Innotournament : JavaPlugin(), Listener {
                 val selectedWorldIds = areas.mapTo(HashSet()) { it.worldId }
                 server.onlinePlayers.filter { it.world.uid in selectedWorldIds }
                     .forEach(mapItemDelivery::ensureCurrentWorldMap)
-                generatorRuntime.resetForWorlds(setOf(bindings.gameWorld.uid))
+                generatorRuntime.resetForWorlds(bindings.gameplayWorldIds)
             }
         )
         tournament.onRemove.subscribe {

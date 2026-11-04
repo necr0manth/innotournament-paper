@@ -107,6 +107,18 @@ class WorldBindingsTest {
         assertSame(normal, bindings.normalWorld)
         assertSame(nether, bindings.netherWorld)
         assertSame(end, bindings.endWorld)
+        assertEquals(setOf(game.uid, normal.uid, nether.uid, end.uid), bindings.gameplayWorldIds)
+        assertTrue(preStart.uid !in bindings.gameplayWorldIds)
+    }
+
+    @Test
+    fun gameplayWorldIdsAreUniqueWhenDimensionsShareOneWorld() {
+        val game = world(NamespacedKey("custom", "arena"))
+        val nether = world(NamespacedKey.minecraft("the_nether"))
+        val end = world(NamespacedKey.minecraft("the_end"))
+        val bindings = ResolvedWorldBindings(game, game, game, nether, end)
+
+        assertEquals(setOf(game.uid, nether.uid, end.uid), bindings.gameplayWorldIds)
     }
 
     private fun world(key: NamespacedKey, id: UUID = UUID.randomUUID()): World {
