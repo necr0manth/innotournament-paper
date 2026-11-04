@@ -7,6 +7,8 @@ import dev.necr0manthre.innotournament.players.PluginPlayer
 import dev.necr0manthre.innotournament.teams.PluginTeam.TeamManager
 import dev.necr0manthre.innotournament.teams.TeamCreateResult
 import dev.necr0manthre.innotournament.tournament.Tournament
+import dev.necr0manthre.innotournament.tournament.testTournament
+import dev.necr0manthre.innotournament.tournament.markTournamentPlayerPrepared
 import dev.necr0manthre.innotournament.tournament.events.event_data.ISourcePlayerProvider
 import dev.necr0manthre.innotournament.tournament.events.event_data.ITeamProvider
 import dev.necr0manthre.innotournament.tournament.events.event_data.PlayerHolder
@@ -35,11 +37,7 @@ class EventProtocolTest {
         }
     }
 
-    private fun passiveTournament(): Tournament = Tournament(
-        teamManager, Location(null, 0.0, 0.0, 0.0), Location(null, 0.0, 0.0, 0.0),
-        null, Location(null, 0.0, 0.0, 0.0), GameMode.SURVIVAL,
-        EventPlan.of(emptyList()), EventPlan.of(emptyList()), doubleArrayOf(), 0f
-    )
+    private fun passiveTournament(): Tournament = testTournament(teamManager)
 
     private fun load(json: String): EventPlan =
         EventLoader.loadEvents(JsonParser.parseString(json), temp.resolve("events.json"))
@@ -156,7 +154,7 @@ class EventProtocolTest {
             }
             assertEquals(0.0, tournamentTeam.score)
 
-            player.javaClass.getDeclaredMethod("markPrepared").apply { isAccessible = true }.invoke(player)
+            markTournamentPlayerPrepared(player)
             assertThrows(IllegalArgumentException::class.java) { player.setLives(-1) }
             assertEquals(3, player.lives)
             player.setLives(1)

@@ -11,8 +11,6 @@ import io.papermc.paper.command.brigadier.CommandSourceStack
 import io.papermc.paper.command.brigadier.argument.ArgumentTypes
 import io.papermc.paper.command.brigadier.argument.resolvers.BlockPositionResolver
 import io.papermc.paper.math.Position
-import net.minecraft.server.Bootstrap
-import net.minecraft.SharedConstants
 import net.kyori.adventure.text.Component
 import org.bukkit.NamespacedKey
 import org.bukkit.command.CommandSender
@@ -31,8 +29,7 @@ class TournamentConfigSetCommandTest {
 
     companion object {
         @JvmStatic @BeforeAll fun bootstrapVanillaArguments() {
-            SharedConstants.tryDetectVersion()
-            Bootstrap.bootStrap()
+            PaperCommandTestBootstrap.ensure()
         }
     }
 

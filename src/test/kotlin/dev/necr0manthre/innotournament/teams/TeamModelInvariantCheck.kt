@@ -4,6 +4,7 @@ import dev.necr0manthre.innotournament.players.PluginPlayer
 import dev.necr0manthre.innotournament.tournament.Tournament
 import dev.necr0manthre.innotournament.tournament.TournamentTeam
 import dev.necr0manthre.innotournament.tournament.TournamentPhase
+import dev.necr0manthre.innotournament.tournament.testTournament
 import dev.necr0manthre.innotournament.tournament.events.EventPlan
 import dev.necr0manthre.innotournament.teams.PluginTeam.TeamManager
 import dev.necr0manthre.innotournament.teams.events.PlayerTeamEvent
@@ -503,9 +504,7 @@ private fun verifyTournamentOwnership(manager: TeamManager) {
     val player = PluginPlayer.get(UUID.randomUUID())
     val team = (manager.createNewTeam(player, "ownership-${player.uuid}", Component.text("Ownership"))
         as TeamCreateResult.Created).team
-    val origin = Location(null, 0.0, 0.0, 0.0)
-    val tournament = Tournament(manager, origin, origin, null, origin, GameMode.SURVIVAL,
-        EventPlan.of(emptyList()), EventPlan.of(emptyList()), doubleArrayOf(), 0f)
+    val tournament = testTournament(manager)
     check(tournament.getTeam(team) == null && tournament.getPlayer(player) == null)
     check(tournament.teams().isEmpty() && tournament.players().isEmpty())
 
@@ -542,9 +541,7 @@ private fun verifyJoinScoreGuards(manager: TeamManager) {
     val second = PluginPlayer.get(UUID.randomUUID())
     val team = (manager.createNewTeam(first, "ratio-${first.uuid}", Component.text("Ratio"))
         as TeamCreateResult.Created).team
-    val origin = Location(null, 0.0, 0.0, 0.0)
-    val tournament = Tournament(manager, origin, origin, null, origin, GameMode.SURVIVAL,
-        EventPlan.of(emptyList()), EventPlan.of(emptyList()), doubleArrayOf(0.0, Double.MIN_VALUE, Double.MAX_VALUE), 0f)
+    val tournament = testTournament(manager, listOf(0.0, Double.MIN_VALUE, Double.MAX_VALUE))
     Tournament::class.java.getDeclaredField("phase").apply { isAccessible = true }
         .set(tournament, TournamentPhase.STARTED)
     tournament.checkTeam(team)
@@ -570,8 +567,7 @@ private fun verifyJoinScoreGuards(manager: TeamManager) {
     val productPlayer = PluginPlayer.get(UUID.randomUUID())
     val productTeam = (manager.createNewTeam(productPlayer, "product-${productPlayer.uuid}", Component.text("Product"))
         as TeamCreateResult.Created).team
-    val productTournament = Tournament(manager, origin, origin, null, origin, GameMode.SURVIVAL,
-        EventPlan.of(emptyList()), EventPlan.of(emptyList()), doubleArrayOf(Double.MAX_VALUE), 0f)
+    val productTournament = testTournament(manager, listOf(Double.MAX_VALUE))
     Tournament::class.java.getDeclaredField("phase").apply { isAccessible = true }
         .set(productTournament, TournamentPhase.STARTED)
     productTournament.checkTeam(productTeam)
@@ -647,9 +643,7 @@ private fun verifyBulkRemovalFrozenSizes(manager: TeamManager) {
 }
 
 private fun verifyDeletedTeamRanking(manager: TeamManager, activeTeam: PluginTeam, player: PluginPlayer, lastMember: PluginPlayer) {
-    val origin = Location(null, 0.0, 0.0, 0.0)
-    val tournament = Tournament(manager, origin, origin, null, origin, GameMode.SURVIVAL,
-        EventPlan.of(emptyList()), EventPlan.of(emptyList()), doubleArrayOf(1.0), 0f)
+    val tournament = testTournament(manager, listOf(1.0))
     Tournament::class.java.getDeclaredField("phase").apply { isAccessible = true }
         .set(tournament, TournamentPhase.STARTED)
     activeTeam.acceptAll = true
@@ -676,17 +670,19 @@ private fun verifyDeletedTeamRanking(manager: TeamManager, activeTeam: PluginTea
     historicalRecord.addScore(100.0)
 
     val output = PlainTextComponentSerializer.plainText()
-    val standingsMethod = Tournament::class.java.getDeclaredMethod("finalStandingsMessage")
-        .apply { isAccessible = true }
-    fun standings() = output.serialize(standingsMethod.invoke(tournament) as Component)
+    fun standings() = dev.necr0manthre.innotournament.tournament.withPrimaryTestServer {
+        tournament.standings().joinToString(", ") {
+            "${it.rank}. ${output.serialize(it.displayName)} (${it.score})"
+        }
+    }
     val remainingName = output.serialize(activeTeam.displayName)
-    val onlyRemaining = "Tournament ended. Results: 1. $remainingName (25.0)"
+    val onlyRemaining = "1. $remainingName (25.0)"
 
     val onRemove: (PluginTeam) -> Unit = tournament::onTeamRemoved
     manager.afterRemove.subscribe(onRemove)
     try {
         check(tournament.getTopTeams(1) == listOf(historicalRecord))
-        check(standings() == "Tournament ended. Results: 1. Leader (100.0), 2. $remainingName (25.0)")
+        check(standings() == "1. Leader (100.0), 2. $remainingName (25.0)")
         check(manager.removeTeamFromCommand(leadingTeam))
         check(tournament.getTeam(leadingTeam) == null)
         check(historicalRecord.score == 100.0)
@@ -719,7 +715,7 @@ private fun verifyDeletedTeamRanking(manager: TeamManager, activeTeam: PluginTea
         check(manager.removeTeamFromCommand(activeTeam))
         check(manager.removeTeamFromCommand(replacement))
         check(tournament.getTopTeams(10).isEmpty())
-        check(standings() == "Tournament ended") // History exists, no active places.
+        check(standings().isEmpty()) // History exists, no active places.
         check(records.size == 3 && historicalRecord in records)
     } finally {
         manager.afterRemove.unsubscribe(onRemove)

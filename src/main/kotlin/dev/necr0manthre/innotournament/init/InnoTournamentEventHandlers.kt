@@ -115,9 +115,7 @@ object InnoTournamentEventHandlers {
                 "false" -> false
                 else -> throw IllegalArgumentException("Expected true or false")
             }
-            ITournamentEventListener<Any?> { _, _ ->
-                Bukkit.getWorlds().forEach { it.pvp = pvp }
-            }
+            ITournamentEventListener<Any?> { tournament, _ -> tournament.setPvp(pvp) }
         })
     )
 

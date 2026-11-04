@@ -37,11 +37,7 @@ class TournamentStandingsTest {
             check(empty.tryKickPlayerFromTeam(empty.players.single()).isSuccess)
             val deleted = createTeam("deleted", PluginPlayer.get(UUID(0, 41)))
 
-            val origin = Location(null, 0.0, 0.0, 0.0)
-            val tournament = Tournament(
-                manager, origin, origin, null, origin, GameMode.SURVIVAL,
-                EventPlan.of(emptyList()), EventPlan.of(emptyList()), doubleArrayOf(), 0f
-            )
+            val tournament = testTournament(manager)
             Tournament::class.java.getDeclaredField("phase").apply { isAccessible = true }
                 .set(tournament, TournamentPhase.STARTED)
             listOf(beta, alpha, empty, deleted).forEach(tournament::checkTeam)
