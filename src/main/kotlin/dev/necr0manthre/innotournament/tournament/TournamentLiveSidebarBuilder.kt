@@ -33,7 +33,7 @@ object TournamentLiveSidebarBuilder {
     sealed interface Participation {
         class Confirmed(
             val teamId: String,
-            val teamName: String,
+            val teamName: Component,
             val score: Double,
             roster: List<Participant>
         ) : Participation {
@@ -45,14 +45,14 @@ object TournamentLiveSidebarBuilder {
     }
 
     data class Participant(
-        val displayName: String,
+        val displayName: Component,
         val lives: Int,
         val online: Boolean
     )
 
     data class RankedTeam(
         val id: String,
-        val displayName: String,
+        val displayName: Component,
         val score: Double,
         val rank: Int
     )
@@ -73,16 +73,13 @@ object TournamentLiveSidebarBuilder {
         val lines = mutableListOf<Component>(Component.text("Игра", NamedTextColor.GOLD))
         when (val participation = snapshot.participation) {
             is Participation.Confirmed -> {
-                lines += Component.text(
-                    "Команда: ${participation.teamName}: ${TournamentScoreFormatter.format(participation.score)}",
-                    NamedTextColor.YELLOW
-                )
+                lines += Component.text("Команда: ", NamedTextColor.YELLOW)
+                    .append(participation.teamName)
+                    .append(Component.text(": ${TournamentScoreFormatter.format(participation.score)}"))
                 lines += rosterLines(participation.roster.map { member ->
-                    buildString {
-                        append(member.displayName)
-                        if (!member.online) append(" (не в сети)")
-                        append(" — ").append(member.lives)
-                    }
+                    member.displayName
+                        .append(if (member.online) Component.empty() else Component.text(" (не в сети)"))
+                        .append(Component.text(" — ${member.lives}"))
                 })
             }
 
@@ -106,17 +103,17 @@ object TournamentLiveSidebarBuilder {
         return sidebar(lines)
     }
 
-    private fun rankedTeamLine(team: RankedTeam): Component = Component.text(
-        "${team.rank}. ${team.displayName}: ${TournamentScoreFormatter.format(team.score)}"
-    )
+    private fun rankedTeamLine(team: RankedTeam): Component = Component.text("${team.rank}. ")
+        .append(team.displayName)
+        .append(Component.text(": ${TournamentScoreFormatter.format(team.score)}"))
 
-    private fun rosterLines(names: List<String>): List<Component> {
+    private fun rosterLines(names: List<Component>): List<Component> {
         val visible = if (names.size > ROSTER_LINE_LIMIT) {
-            names.take(ROSTER_LINE_LIMIT - 1) + "ещё ${names.size - (ROSTER_LINE_LIMIT - 1)}"
+            names.take(ROSTER_LINE_LIMIT - 1) + Component.text("ещё ${names.size - (ROSTER_LINE_LIMIT - 1)}")
         } else {
             names
         }
-        return visible.map { Component.text(it) }
+        return visible
     }
 
     private fun preparedRosterLines(names: List<Component>): List<Component> {
