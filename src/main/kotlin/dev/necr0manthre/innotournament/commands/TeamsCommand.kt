@@ -33,11 +33,11 @@ class TeamsCommand(private val teamManager: TeamManager) {
         registerer.add(
             Commands.literal("leave")
                 .executes { ctx ->
-                    val player = player(ctx) ?: return@executes 1
-                    val team = checkTeam(ctx) ?: return@executes 1
+                    val player = player(ctx) ?: return@executes 0
+                    val team = checkTeam(ctx) ?: return@executes 0
                     val oldOwner = team.owner
 
-                    if (!team.tryKickPlayerFromTeam(player).isSuccess) return@executes 1
+                    if (!team.tryKickPlayerFromTeam(player).isSuccess) return@executes 0
                     ctx.source.sender.sendMessage(
                         Component.text("You left from team ")
                             .append(team.displayName)
@@ -64,8 +64,8 @@ class TeamsCommand(private val teamManager: TeamManager) {
         registerer.add(
             Commands.literal("myTeam")
                 .executes { ctx ->
-                    val player = player(ctx) ?: return@executes 1
-                    val team = checkTeam(ctx) ?: return@executes 1
+                    val player = player(ctx) ?: return@executes 0
+                    val team = checkTeam(ctx) ?: return@executes 0
                     ctx.source.sender.sendMessage(myTeamMessage(player, team))
                     Command.SINGLE_SUCCESS
                 }
@@ -77,11 +77,11 @@ class TeamsCommand(private val teamManager: TeamManager) {
                     Commands.argument<String>("team", StringArgumentType.greedyString())
                         .suggestTeams()
                         .executes { ctx ->
-                            val player = player(ctx) ?: return@executes 1
+                            val player = player(ctx) ?: return@executes 0
                             val team = teamManager.getTeamById(StringArgumentType.getString(ctx, "team"))
                                 ?: run {
                                     ctx.source.sender.sendMessage(Component.text("Team not found", NamedTextColor.RED))
-                                    return@executes 1
+                                    return@executes 0
                                 }
 
                             if (!team.acceptAll && !InviteSystem.isPlayerInvitedToTeam(player, team)) {
@@ -91,7 +91,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                                         NamedTextColor.RED
                                     )
                                 )
-                                return@executes 1
+                                return@executes 0
                             }
                             if (!team.tryAddPlayerToTeam(player).isSuccess) {
                                 ctx.source.sender.sendMessage(
@@ -100,7 +100,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                                         NamedTextColor.RED
                                     )
                                 )
-                                return@executes 1
+                                return@executes 0
                             }
 
                             InviteSystem.rejectInvite(player, team)
@@ -116,7 +116,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                 .then(
                     Commands.argument("displayName", ArgumentTypes.component())
                         .executes { ctx ->
-                            val creator = player(ctx) ?: return@executes 1
+                            val creator = player(ctx) ?: return@executes 0
                             if (creator.team != null) {
                                 ctx.source.sender.sendMessage(
                                     Component.text(
@@ -124,14 +124,14 @@ class TeamsCommand(private val teamManager: TeamManager) {
                                         NamedTextColor.RED
                                     )
                                 )
-                                return@executes 1
+                                return@executes 0
                             }
 
                             val displayName = ctx.getArgument("displayName", Component::class.java)
                             val id = idFromDisplayName(displayName)
                             if (teamManager.getTeamById(id) != null) {
                                 ctx.source.sender.sendMessage(Component.text("Team already exists", NamedTextColor.RED))
-                                return@executes 1
+                                return@executes 0
                             }
 
                             val result = teamManager.createNewTeam(creator, id, displayName)
@@ -140,7 +140,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                                 ctx.source.sender.sendMessage(
                                     Component.text("Unable to create team: $result", NamedTextColor.RED)
                                 )
-                                return@executes 1
+                                return@executes 0
                             }
                             ctx.source.sender.sendMessage(
                                 Component.text("Created team ").append(team.displayName)
@@ -172,9 +172,9 @@ class TeamsCommand(private val teamManager: TeamManager) {
                     Commands.argument<String>("player", StringArgumentType.word())
                         .suggestPlayers()
                         .executes { ctx ->
-                            val team = checkTeam(ctx) ?: return@executes 1
-                            if (checkOwner(ctx) == null) return@executes 1
-                            val target = getTargetPlayer(ctx) ?: return@executes 1
+                            val team = checkTeam(ctx) ?: return@executes 0
+                            if (checkOwner(ctx) == null) return@executes 0
+                            val target = getTargetPlayer(ctx) ?: return@executes 0
 
                             if (!InviteSystem.isPlayerInvitedToTeam(target, team)) {
                                 ctx.source.sender.sendMessage(
@@ -183,7 +183,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                                         NamedTextColor.RED
                                     )
                                 )
-                                return@executes 1
+                                return@executes 0
                             }
 
                             InviteSystem.rejectInvite(target, team)
@@ -207,8 +207,8 @@ class TeamsCommand(private val teamManager: TeamManager) {
                     Commands.argument<String>("player", StringArgumentType.word())
                         .suggestPlayers()
                         .executes { ctx ->
-                            val inviter = player(ctx) ?: return@executes 1
-                            val invited = getTargetPlayer(ctx) ?: return@executes 1
+                            val inviter = player(ctx) ?: return@executes 0
+                            val invited = getTargetPlayer(ctx) ?: return@executes 0
                             if (invited === inviter) {
                                 ctx.source.sender.sendMessage(
                                     Component.text(
@@ -216,7 +216,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                                         NamedTextColor.RED
                                     )
                                 )
-                                return@executes 1
+                                return@executes 0
                             }
 
                             val existingTeam = inviter.team
@@ -229,7 +229,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                                         ctx.source.sender.sendMessage(
                                             Component.text("Unable to create team: $created", NamedTextColor.RED)
                                         )
-                                        return@executes 1
+                                        return@executes 0
                                     }
                                 }
                             }
@@ -254,7 +254,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
         registerer.add(
             Commands.literal("tryLeave")
                 .executes { ctx ->
-                    if (checkTeam(ctx) == null) return@executes 1
+                    if (checkTeam(ctx) == null) return@executes 0
                     ctx.source.sender.sendMessage(
                         Component.text("Are you sure? ")
                             .append(
@@ -273,10 +273,10 @@ class TeamsCommand(private val teamManager: TeamManager) {
                     Commands.argument<String>("player", StringArgumentType.word())
                         .suggestPlayers()
                         .executes { ctx ->
-                            if (checkTeam(ctx) == null) return@executes 1
-                            if (checkOwner(ctx) == null) return@executes 1
+                            if (checkTeam(ctx) == null) return@executes 0
+                            if (checkOwner(ctx) == null) return@executes 0
 
-                            val target = getTargetPlayer(ctx) ?: return@executes 1
+                            val target = getTargetPlayer(ctx) ?: return@executes 0
                             val action = Component.text(" [Kick ", NamedTextColor.RED)
                                 .append(target.displayName)
                                 .append(Component.text(" ]", NamedTextColor.RED))
@@ -304,15 +304,15 @@ class TeamsCommand(private val teamManager: TeamManager) {
                         .then(
                             Commands.argument("name", ArgumentTypes.component())
                                 .executes { ctx ->
-                                    val team = checkTeam(ctx) ?: return@executes 1
-                                    if (checkOwner(ctx) == null) return@executes 1
+                                    val team = checkTeam(ctx) ?: return@executes 0
+                                    if (checkOwner(ctx) == null) return@executes 0
                                     val name = ctx.getArgument("name", Component::class.java)
 
                                     if (!team.changeTeamName(name)) {
                                         ctx.source.sender.sendMessage(
                                             Component.text("Team with this name already exists", NamedTextColor.RED)
                                         )
-                                        return@executes 1
+                                        return@executes 0
                                     }
 
                                     updateSidebars()
@@ -327,8 +327,8 @@ class TeamsCommand(private val teamManager: TeamManager) {
                 .then(
                     Commands.argument<Boolean>("acceptAll", BoolArgumentType.bool())
                         .executes { ctx ->
-                            val team = checkTeam(ctx) ?: return@executes 1
-                            if (checkOwner(ctx) == null) return@executes 1
+                            val team = checkTeam(ctx) ?: return@executes 0
+                            if (checkOwner(ctx) == null) return@executes 0
 
                             team.acceptAll = BoolArgumentType.getBool(ctx, "acceptAll")
                             ctx.source.sender.sendMessage(
@@ -345,10 +345,10 @@ class TeamsCommand(private val teamManager: TeamManager) {
                     Commands.argument<String>("player", StringArgumentType.word())
                         .suggestPlayers()
                         .executes { ctx ->
-                            val team = checkTeam(ctx) ?: return@executes 1
-                            if (checkOwner(ctx) == null) return@executes 1
+                            val team = checkTeam(ctx) ?: return@executes 0
+                            if (checkOwner(ctx) == null) return@executes 0
 
-                            val target = getTargetPlayer(ctx) ?: return@executes 1
+                            val target = getTargetPlayer(ctx) ?: return@executes 0
                             val result = team.tryKickPlayerFromTeam(target)
                             if (!result.isSuccess) {
                                 ctx.source.sender.sendMessage(
@@ -357,7 +357,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                                         NamedTextColor.RED
                                     )
                                 )
-                                return@executes 1
+                                return@executes 0
                             }
 
                             target.player?.sendMessage(Component.text("You were kicked from team"))
