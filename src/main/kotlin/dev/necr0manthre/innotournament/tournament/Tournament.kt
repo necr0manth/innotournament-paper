@@ -114,17 +114,21 @@ class Tournament(
     private val onEndEvent = SimpleEvent<Unit>()
     private val onRemoveEvent = SimpleEvent<Unit>()
     private val playerRunOutOfLivesEvent = SimpleEvent<TournamentPlayer>()
+    private val ticksEvent = SimpleEvent<TournamentTick>()
     val onPrepare: EventSubscriptionView<Unit> = onPrepareEvent.asSubscriptionView()
     val onStart: EventSubscriptionView<Unit> = onStartEvent.asSubscriptionView()
     val onEnd: EventSubscriptionView<Unit> = onEndEvent.asSubscriptionView()
     val onRemove: EventSubscriptionView<Unit> = onRemoveEvent.asSubscriptionView()
     val playerRunOutOfLives: EventSubscriptionView<TournamentPlayer> = playerRunOutOfLivesEvent.asSubscriptionView()
+    val ticks: EventSubscriptionView<TournamentTick> = ticksEvent.asSubscriptionView()
     private val advancementHandler = TournamentAdvancementHandler(this)
     val teamAdvancementEvent: EventSubscriptionView<TeamAdvancement> = advancementHandler.teamAdvancementEvent
 
     var phase: TournamentPhase = TournamentPhase.CREATED
         private set
-    var startTime: Long = 0L
+    private var stageTick = 0L
+    private var hasHadTwoAliveTeams = false
+    val elapsedTime: Long get() = if (phase >= TournamentPhase.STARTED) stageTick else 0L
 
     private val preStartEventInstances = mutableSetOf<TournamentEventInstance<*>>()
     private val mainEventInstances = mutableSetOf<TournamentEventInstance<*>>()
@@ -195,6 +199,7 @@ class Tournament(
         registerTeamEventListeners()
         setWorldBorderAndSpawn(tournamentPreSpawn)
         phase = TournamentPhase.PREPARED
+        stageTick = 0L
         subscribeAll(preStartEvents, preStartEventInstances)
         Bukkit.getOnlinePlayers().forEach(::checkPlayer)
         onPrepareEvent.invoke(Unit)
@@ -209,7 +214,7 @@ class Tournament(
         subscribeAll(mainEvents, mainEventInstances)
         removeEvents(preStartEventInstances)
         phase = TournamentPhase.STARTED
-        startTime = timeWorld()?.fullTime ?: 0L
+        stageTick = 0L
         setWorldBorderAndSpawn(tournamentSpawn)
         checkAllTeams()
         onStartEvent.invoke(Unit)
@@ -245,9 +250,13 @@ class Tournament(
 
     fun checkAllTeams() {
         teamManager.getAllTeams().forEach(::checkTeam)
+        updateFinishEligibility()
     }
 
-    fun checkTeam(team: PluginTeam) = checkTeam(team, resetAcceptAll = true)
+    fun checkTeam(team: PluginTeam) {
+        checkTeam(team, resetAcceptAll = true)
+        updateFinishEligibility()
+    }
 
     private fun checkTeam(team: PluginTeam, resetAcceptAll: Boolean) {
         if (phase != TournamentPhase.STARTED) return
@@ -257,9 +266,6 @@ class Tournament(
         }
         team.players.forEach(::getOrCreateTournamentPlayer)
     }
-
-    val elapsedTime: Long
-        get() = if (phase >= TournamentPhase.STARTED) (timeWorld()?.fullTime ?: startTime) - startTime else 0L
 
     private fun setupPlayer(tournamentPlayer: TournamentPlayer): Boolean {
         val player = tournamentPlayer.player ?: return false
@@ -310,6 +316,7 @@ class Tournament(
         player.setLivesInternally(value)
         updateSidebars()
         if (previous > 0 && value == 0) playerRunOutOfLivesEvent.invoke(player)
+        updateFinishEligibility()
     }
 
     private fun requireCanonicalPlayer(player: TournamentPlayer) {
@@ -376,6 +383,7 @@ class Tournament(
             require(ratio.isFinite() && updated.isFinite()) { "Calculated score must be finite" }
             (team as TournamentTeamImpl).scoreValue = updated
         }
+        updateFinishEligibility()
         event.player.player?.let(::checkPlayer)
         updateSidebars()
     }
@@ -385,6 +393,7 @@ class Tournament(
         // A completed leave expires that runtime participation. A later join gets
         // a fresh TournamentPlayer and its normal setup, even on an A -> B move.
         clearPlayer(event.player, event.team)
+        updateFinishEligibility()
         // Leaving never changes the historical score of the departing team.
         updateSidebars()
     }
@@ -395,6 +404,7 @@ class Tournament(
         // Keep the accumulated TournamentTeam in the result set, but release
         // the permanently disposed team's live back-reference.
         clearTeamState(team)
+        updateFinishEligibility()
     }
 
     private fun getOrCreateTournamentTeam(team: PluginTeam): TournamentTeam? {
@@ -481,7 +491,7 @@ class Tournament(
         listener = object : Listener {
             @EventHandler
             fun onTick(event: ServerTickEndEvent) {
-                tick()
+                serverTick()
             }
 
             @EventHandler
@@ -504,17 +514,18 @@ class Tournament(
         }.also { Bukkit.getPluginManager().registerEvents(it, Innotournament.instance) }
     }
 
-    private fun tick() {
-        if (phase != TournamentPhase.CREATED && phase != TournamentPhase.ENDED) {
+    private fun serverTick() {
+        if (phase == TournamentPhase.PREPARED || phase == TournamentPhase.STARTED) {
             Bukkit.getOnlinePlayers().forEach(::checkPlayer)
             checkAllTeams()
         }
 
+        if (phase != TournamentPhase.PREPARED && phase != TournamentPhase.STARTED) return
+        dispatchNextTick()
         if (phase != TournamentPhase.STARTED) return
-        val aliveTeams = teams.filter { team ->
-            team.players.any { it.lives > 0 }
-        }
-        if (aliveTeams.size > 1) return
+
+        val aliveTeams = aliveTeams()
+        if (!hasHadTwoAliveTeams || aliveTeams.size > 1) return
 
         aliveTeams.singleOrNull()?.let { team ->
             require(lastTeamScore.isFinite()) { "Final score must be finite" }
@@ -529,6 +540,26 @@ class Tournament(
         advancementHandler.unregister()
         unregisterTeamEventListeners()
         clearParticipationState()
+    }
+
+    private fun dispatchNextTick() {
+        stageTick++
+        val frame = TournamentTick(
+            phase,
+            stageTick,
+            if (phase == TournamentPhase.STARTED) players.filter { player ->
+                player.prepared && player.player != null && getPlayer(player.pluginPlayer) === player
+            } else emptyList()
+        )
+        ticksEvent.invoke(frame)
+    }
+
+    private fun aliveTeams(): List<TournamentTeam> = teams.filter { team ->
+        teamManager.getTeamById(team.id) === team.pluginTeam && team.players.any { it.lives > 0 }
+    }
+
+    private fun updateFinishEligibility() {
+        if (phase == TournamentPhase.STARTED && aliveTeams().size >= 2) hasHadTwoAliveTeams = true
     }
 
     private fun broadcastFinalStandings() {
@@ -595,11 +626,6 @@ class Tournament(
     private fun centerBlock(location: Location): Location {
         val world = location.world
         return Location(world, location.blockX + 0.5, location.blockY.toDouble(), location.blockZ + 0.5)
-    }
-
-    private fun timeWorld(): World? {
-        return Bukkit.getWorlds().firstOrNull { it.environment == World.Environment.NORMAL }
-            ?: Bukkit.getWorlds().firstOrNull()
     }
 
     companion object {
