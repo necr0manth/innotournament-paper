@@ -329,6 +329,34 @@ class Tournament(
         .filter { teamManager.getTeamById(it.pluginTeam.id) === it.pluginTeam }
         .sortedByDescending { it.score }
 
+    /** Returns a frozen view of the currently participating, registered teams. */
+    fun standings(): List<TournamentResult.Team> {
+        val rankedTeams = currentStandings()
+            .map { it to it.score }
+            .sortedWith { (first, firstScore), (second, secondScore) ->
+                when {
+                    firstScore > secondScore -> -1
+                    firstScore < secondScore -> 1
+                    else -> first.id.compareTo(second.id)
+                }
+            }
+        var rank = 0
+        var previousScore = 0.0
+        var hasPreviousScore = false
+        return Collections.unmodifiableList(rankedTeams.mapIndexed { index, (team, score) ->
+            if (!hasPreviousScore || score != previousScore) rank = index + 1
+            previousScore = score
+            hasPreviousScore = true
+            TournamentResult.Team(
+                team.id,
+                team.displayName,
+                score,
+                rank,
+                team.pluginTeam.players.map { TournamentResult.Player(it.uuid, it.offlinePlayer.name) }
+            )
+        })
+    }
+
     fun getTopTeams(n: Int): MutableList<TournamentTeam> {
         val sorted = currentStandings().toMutableList()
         return sorted.subList(0, min(n, sorted.size))
