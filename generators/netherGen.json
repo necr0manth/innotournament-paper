@@ -1,0 +1,148 @@
+[
+  {
+    "generationTime": 600,
+    "maxItemCount": 4,
+    "probabilities": {
+        //экипировка(17)
+        "minecraft:golden_helmet": 1,
+        "minecraft:golden_chestplate": 1,
+        "minecraft:golden_leggings": 1,
+        "minecraft:golden_boots": 1,
+        "minecraft:iron_sword": 1,
+        "minecraft:iron_axe": 1,
+        "minecraft:iron_helmet": 0.5,
+        "minecraft:iron_chestplate": 0.5,
+        "minecraft:iron_leggings": 0.5,
+        "minecraft:iron_boots": 0.5,
+        "minecraft:iron_pickaxe": 1,
+        "minecraft:crossbow": 3,
+        "{count:16,id:\"minecraft:arrow\"}": 1,
+        "{count:16,id:\"minecraft:spectral_arrow\"}": 1,
+        "{count:1,id:\"minecraft:shield\"}": 1,
+        "{count:1, components:{\"minecraft:enchantments\":{\"minecraft:flame\":1}, \"minecraft:repair_cost\":1}, id:\"minecraft:bow\"}": 1,
+        //малый шанс на diamond tools
+        "minecraft:diamond_sword": 0.2,
+        "minecraft:diamond_axe": 0.2,
+        "minecraft:diamond_pickaxe": 0.6,
+        //всякая всячина(примерно тоже, что и в обычном, но больше)   (14)
+        "{count: 32, id: \"minecraft:crimson_planks\"}": 0.1,
+        "{count: 32, id: \"minecraft:warped_planks\"}": 0.1,
+        "{count: 31, id: \"minecraft:crimson_planks\"}": 0.1,
+        "{count: 31, id: \"minecraft:warped_planks\"}": 0.1,
+        "{count: 30, id: \"minecraft:crimson_planks\"}": 0.1,
+        "{count: 30, id: \"minecraft:warped_planks\"}": 0.1,
+        "{count: 33, id: \"minecraft:crimson_planks\"}": 0.1,
+        "{count: 33, id: \"minecraft:warped_planks\"}": 0.1,
+        "{count: 34, id: \"minecraft:crimson_planks\"}": 0.1,
+        "{count: 34, id: \"minecraft:warped_planks\"}": 0.1,
+        "{count: 1, id: \"minecraft:lava_bucket\"}": 1,
+        "{count:1,id:\"minecraft:potion\", components: {\"minecraft:potion_contents\": {potion: \"minecraft:fire_resistance\"}}}": 1,
+        "{count: 1, id: \"minecraft:splash_potion\", components: {\"minecraft:potion_contents\": {potion: \"minecraft:fire_resistance\"}}}": 1,
+        "{count:2,id:\"minecraft:trial_key\"}": 0.5,
+        "{count:3,id:\"minecraft:trial_key\"}": 0.5,
+        "{count:6,id:\"minecraft:fire_charge\"}": 0.2,
+        "{count:7,id:\"minecraft:fire_charge\"}": 0.2,
+        "{count:8,id:\"minecraft:fire_charge\"}": 0.2,
+        "{count:5,id:\"minecraft:fire_charge\"}": 0.2,
+        "{count:4,id:\"minecraft:fire_charge\"}": 0.2,
+        //iron(2)
+        "{count:5, id:\"iron_ingot\"}": 0.5,
+        "{count:4, id:\"iron_ingot\"}": 0.5,
+        "{count:7, id:\"iron_ingot\"}": 0.5,
+        "{count:6, id:\"iron_ingot\"}": 0.5,
+        //gold(1)
+        "{count:8, id:\"minecraft:gold_ingot\"}": 0.2,
+        "{count:9, id:\"minecraft:gold_ingot\"}": 0.2,
+        "{count:10, id:\"minecraft:gold_ingot\"}": 0.2,
+        "{count:11, id:\"minecraft:gold_ingot\"}": 0.2,
+        "{count:12, id:\"minecraft:gold_ingot\"}": 0.2,
+        //obsidian(1)
+        "{count:4, id:\"minecraft:obsidian\"}": 0.2,
+        "{count:5, id:\"minecraft:obsidian\"}": 0.2,
+        "{count:6, id:\"minecraft:obsidian\"}": 0.2,
+        "{count:7, id:\"minecraft:obsidian\"}": 0.2,
+        "{count:8, id:\"minecraft:obsidian\"}": 0.2,
+        //gunpowder(1)
+        "{count:12, id:\"minecraft:gunpowder\"}": 0.2,
+        "{count:11, id:\"minecraft:gunpowder\"}": 0.2,
+        "{count:10, id:\"minecraft:gunpowder\"}": 0.2,
+        "{count:13, id:\"minecraft:gunpowder\"}": 0.2,
+        "{count:14, id:\"minecraft:gunpowder\"}": 0.2,
+        "{count:1, id:\"minecraft:ancient_debris\"}": 1,
+        "{count:1, id:\"minecraft:netherite_scrap\"}": 0.5,
+        "{count:2, id:\"minecraft:netherite_scrap\"}": 0.5,
+        "{count:1, id:\"minecraft:ender_pearl\"}": 0.5,
+        "{count:2, id:\"minecraft:ender_pearl\"}": 0.5,
+        "{count:1, id:\"minecraft:tnt\"}": 0.5,
+        "{count:2, id:\"minecraft:tnt\"}": 0.5,
+        //еда(10)  *2 по сравнению с обычным миром
+        "{count:8,id:\"minecraft:golden_carrot\"}": 1,
+        "{count:7,id:\"minecraft:golden_carrot\"}": 1,
+        "{count:6,id:\"minecraft:golden_carrot\"}": 1,
+        "{count:10,id:\"minecraft:golden_carrot\"}": 1,
+        "{count:4,id:\"minecraft:cooked_mutton\"}": 1,
+        "{count:6,id:\"minecraft:cooked_mutton\"}": 1,
+        "{count:4,id:\"minecraft:cooked_beef\"}": 1,
+        "{count:6,id:\"minecraft:cooked_beef\"}": 1,
+        "{count:2,id:\"minecraft:golden_apple\"}": 1,
+        //(3)dice
+        "innotournament:inno_dice": 3
+    }
+  },
+  {
+    "generationTime": 2000,
+    "maxItemCount": 2,
+    "probabilities": {
+        //dice(1)
+        "{count:3, id: \"innotournament:inno_dice\"}": 1,
+        //экипировка(15)
+        "{count:1,id:\"minecraft:iron_helmet\"}": 1, //как и в обычном
+        "{count:1,id:\"minecraft:iron_chestplate\"}": 1,
+        "{count:1,id:\"minecraft:iron_boots\"}": 1,
+        "{count:1,id:\"minecraft:iron_leggings\"}": 1,
+        "{count:1,id:\"minecraft:diamond_sword\"}": 1,
+        "{count:1,id:\"minecraft:diamond_pickaxe\"}": 1,
+        "{count:1,id:\"minecraft:diamond_axe\"}": 1,
+        "{count:1,id:\"minecraft:netherite_axe\"}": 1,
+        "{count:1,id:\"minecraft:netherite_ingot\"}": 1,
+        "{count:1,id:\"minecraft:diamond_boots\"}": 0.5, //(3) дроп с 3 уровня в обычном мире(не весь)
+        "{count:1,id:\"minecraft:diamond_chestplate\"}": 0.5,
+        "{count:1,id:\"minecraft:diamond_leggings\"}": 0.5,
+        "{count:1,id:\"minecraft:diamond_helmet\"}": 0.5,
+        "{count:1,id:\"minecraft:diamond_block\"}": 0.5,
+        "{count:2,id:\"minecraft:ominous_trial_key\"}": 0.5,
+        "{components:{\"minecraft:enchantments\":{\"minecraft:fire_aspect\":2},\"minecraft:repair_cost\":1},count:1,id:\"minecraft:diamond_sword\"}": 1,
+        "{count:1,id:\"minecraft:netherite_pickaxe\"}": 1,
+        "{components:{\"minecraft:enchantments\":{\"minecraft:power\":2,\"minecraft:flame\":1},\"minecraft:repair_cost\":3},count:1,id:\"minecraft:bow\"}": 1,
+        //полезные вещи(3)
+        "{count:2,id:\"minecraft:diamond\"}": 0.25,
+        "{count:3,id:\"minecraft:diamond\"}": 0.25,
+        "{count:4,id:\"minecraft:diamond\"}": 0.25,
+        "{count:5,id:\"minecraft:diamond\"}": 0.25,
+        "{count:3,id:\"minecraft:wither_skeleton_spawn_egg\"}": 0.33,
+        "{count:2,id:\"minecraft:wither_skeleton_spawn_egg\"}": 0.33,
+        "{count:1,id:\"minecraft:wither_skeleton_spawn_egg\"}": 0.33,
+        "{count:1,id:\"minecraft:wither_skeleton_skull\"}": 0.5,
+        "{count:2,id:\"minecraft:wither_skeleton_skull\"}": 0.5,
+        "{count:4,id:\"minecraft:golden_apple\"}": 0.5,
+        "{count:5,id:\"minecraft:golden_apple\"}": 0.5
+    }
+  },
+  {
+    "generationTime": 8000,
+    "maxItemCount": 1,
+    "probabilities": {//(8)
+        "{count:1,id:\"minecraft:netherite_boots\"}": 1,
+        "{count:1,id:\"minecraft:netherite_chestplate\"}": 1,
+        "{count:1,id:\"minecraft:netherite_leggings\"}": 1,
+        "{count:1,id:\"minecraft:netherite_helmet\"}": 1,
+        "{count:1,id:\"minecraft:netherite_sword\"}": 1,
+        "{count:1,id:\"minecraft:enchanted_golden_apple\"}": 1,
+        "{components:{\"minecraft:enchantments\":{\"minecraft:swift_sneak\":3},\"minecraft:repair_cost\":1},count:1,id:\"minecraft:netherite_leggings\"}": 0.25,
+        "{components:{\"minecraft:enchantments\":{\"minecraft:fire_protection\":4,\"minecraft:soul_speed\":3},\"minecraft:repair_cost\":1},count:1,id:\"minecraft:netherite_boots\"}": 0.25,
+        "{components:{\"minecraft:enchantments\":{\"minecraft:thorns\":3},\"minecraft:repair_cost\":1},count:1,id:\"minecraft:netherite_chestplate\"}": 0.25,
+        "{components:{\"minecraft:enchantments\":{\"minecraft:fire_protection\":4},\"minecraft:repair_cost\":1},count:1,id:\"minecraft:netherite_helmet\"}": 0.25,
+        "minecraft:totem_of_undying": 1
+    }
+  }
+]
