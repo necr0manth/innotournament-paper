@@ -129,7 +129,7 @@ class Tournament(
             val team = currentTeam(player) ?: return
             val advancement = event.advancement
             val progress = event.player.getAdvancementProgress(advancement)
-            if (!progress.isDone || progress.remainingCriteria.isNotEmpty()) return
+            if (!progress.isDone) return
 
             val fact = AdvancementFact(
                 advancement,

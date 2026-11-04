@@ -32,7 +32,7 @@ class TournamentAdvancementTest {
         try {
         val source = fixture.addMember("adv-source")
         val teammate = fixture.addMember("adv-teammate")
-        val sourceProgress = fixture.progress(setOf("first", "second"))
+        val sourceProgress = fixture.progress(setOf("first"))
         val teammateProgress = fixture.progress(emptySet())
         fixture.bindProgress(source, sourceProgress)
         fixture.bindProgress(teammate, teammateProgress)
@@ -63,14 +63,15 @@ class TournamentAdvancementTest {
         assertEquals(listOf("player", "team"), trace)
         assertEquals(listOf(sourceEntry), personal.map { it.player })
         assertEquals(listOf(fixture.tournament.teams().single()), firstTeam.map { it.team })
-        assertEquals(listOf("first", "second"), teammateProgress.awarded.toList())
+        assertEquals(setOf("first"), teammateProgress.awarded)
+        assertTrue(teammateProgress.proxy.isDone)
         assertEquals(listOf(sourceEntry), personalBridgeValues.map { it.player })
         assertEquals(listOf(fixture.advancement.key), teamBridgeValues.map { it.advancement?.key })
         assertEquals(setOf(fixture.advancement.key), fixture.tournament.teams().single().advancements)
 
         teammateProgress.awarded.clear()
         fixture.reconnect(teammate)
-        assertEquals(setOf("first", "second"), teammateProgress.awarded)
+        assertEquals(setOf("first"), teammateProgress.awarded)
         assertEquals(listOf("player", "team"), trace)
 
         fixture.complete(source)
@@ -100,27 +101,33 @@ class TournamentAdvancementTest {
         try {
         val source = fixture.addMember("adv-incomplete")
         val teammate = fixture.addMember("adv-incomplete-teammate")
-        val sourceProgress = fixture.progress(setOf("first", "second"))
+        val unprepared = fixture.addMember("adv-unprepared")
+        val sourceProgress = fixture.progress(emptySet())
         val teammateProgress = fixture.progress(emptySet())
+        val unpreparedProgress = fixture.progress(setOf("first"))
         fixture.bindProgress(source, sourceProgress)
         fixture.bindProgress(teammate, teammateProgress)
+        fixture.bindProgress(unprepared, unpreparedProgress)
         fixture.tournament.checkTeam(fixture.team)
+        fixture.prepare(source)
         fixture.prepare(teammate)
 
         val notices = mutableListOf<Any>()
         fixture.tournament.realPlayerAdvancements.subscribe(notices::add)
         fixture.tournament.firstTeamAdvancements.subscribe(notices::add)
-        sourceProgress.awarded.add("first")
         fixture.complete(source)
         assertTrue(notices.isEmpty())
         assertTrue(teammateProgress.awarded.isEmpty())
 
-        sourceProgress.awarded.add("second")
-        val entry = checkNotNull(fixture.tournament.getPlayer(source))
-        entry.javaClass.getDeclaredMethod("markPrepared").apply { isAccessible = true }.invoke(entry)
+        sourceProgress.awarded.add("first")
+        assertTrue(sourceProgress.proxy.isDone)
+        assertEquals(setOf("second"), sourceProgress.proxy.remainingCriteria)
         fixture.complete(source)
         assertEquals(2, notices.size)
-        assertEquals(setOf("first", "second"), teammateProgress.awarded)
+        assertEquals(setOf("first"), teammateProgress.awarded)
+
+        fixture.complete(unprepared)
+        assertEquals(2, notices.size)
         } finally {
             fixture.close()
         }
@@ -238,10 +245,10 @@ class TournamentAdvancementTest {
             when (method) {
                 "getAwardedCriteria" -> awarded.toSet()
                 "getRemainingCriteria" -> setOf("first", "second") - awarded
-                "isDone" -> awarded.containsAll(setOf("first", "second"))
+                "isDone" -> awarded.isNotEmpty()
                 "awardCriteria" -> {
                     val changed = awarded.add(args!![0] as String)
-                    if (changed && awarded.containsAll(setOf("first", "second"))) onComplete?.invoke()
+                    if (changed && awarded.isNotEmpty()) onComplete?.invoke()
                     changed
                 }
                 else -> unexpected(method)
