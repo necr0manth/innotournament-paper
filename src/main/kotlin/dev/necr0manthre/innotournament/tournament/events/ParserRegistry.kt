@@ -1,17 +1,20 @@
 package dev.necr0manthre.innotournament.tournament.events
 
 import dev.necr0manthre.innotournament.tournament.events.parsing.IParser
-import kotlin.reflect.KClass
 
+/** Ordered, write-only registrations with no publicly mutable backing set. */
 open class ParserRegistry<O> {
-    private val registry: MutableMap<KClass<*>, MutableSet<IParser<*, O>>> = mutableMapOf()
+    private val parsers = LinkedHashSet<IParser<String, O>>()
 
-    fun <T : Any, E : O, P : IParser<T, E>> register(clazz: KClass<T>, parser: P): P {
-        registry.computeIfAbsent(clazz) { _ -> mutableSetOf() }.add(parser)
+    fun <E : O, P : IParser<String, E>> register(parser: P): P {
+        parsers.add(parser)
         return parser
     }
 
-    fun <T : Any> getParsers(clazz: KClass<out T>): MutableSet<IParser<T, O>> {
-        return registry.computeIfAbsent(clazz) { k -> mutableSetOf() } as MutableSet<IParser<T, O>>
+    fun parse(expression: String): O? {
+        for (parser in parsers.toList()) {
+            parser.tryParse(expression)?.let { return it }
+        }
+        return null
     }
 }

@@ -2,7 +2,9 @@ package dev.necr0manthre.innotournament.tournament.events
 
 import dev.necr0manthre.innotournament.tournament.Tournament
 
-fun interface TournamentEvent<T> {
+/** Reusable immutable definition; the returned instance owns all per-run state. */
+interface TournamentEvent<T> {
+    val valueType: ValueType<T>
     fun subscribe(tournament: Tournament): TournamentEventInstance<T>
 }
 
@@ -14,10 +16,12 @@ class TournamentEventInstance<T>(
     val subscriptions: EventSubscriptionView<T> = backingEvent.asSubscriptionView()
     private val lock = Any()
     private val listeners = mutableListOf<Pair<ITournamentEventListener<T>, (T) -> Unit>>()
-    private var unsubscribed = false
+    @Volatile private var unsubscribed = false
 
     fun addListener(listener: ITournamentEventListener<T>) {
-        val callback: (T) -> Unit = { value -> listener.listen(tournament, value) }
+        val callback: (T) -> Unit = { value ->
+            if (!unsubscribed) listener.listen(tournament, value)
+        }
         synchronized(lock) {
             check(!unsubscribed) { "Event instance is already unsubscribed" }
             listeners.add(listener to callback)
@@ -34,18 +38,14 @@ class TournamentEventInstance<T>(
         }
     }
 
-    @Suppress("UNCHECKED_CAST")
-    fun addWildcardListener(listener: ITournamentEventListener<*>) {
-        addListener(listener as ITournamentEventListener<T>)
-    }
-
     fun unsubscribe() {
         synchronized(lock) {
             if (unsubscribed) return
+            // A failed source unsubscribe propagates; do not pretend the handle was released.
             unsubscribeAction()
-            listeners.forEach { subscriptions.unsubscribe(it.second) }
-            listeners.clear()
             unsubscribed = true
+            backingEvent.close()
+            listeners.clear()
         }
     }
 }

@@ -6,6 +6,7 @@ import dev.necr0manthre.innotournament.tournament.events.BukkitEventBasedTournam
 import dev.necr0manthre.innotournament.tournament.events.LambdaTournamentEvent
 import dev.necr0manthre.innotournament.tournament.events.TournamentEvent
 import dev.necr0manthre.innotournament.tournament.events.TournamentEventInstance
+import dev.necr0manthre.innotournament.tournament.events.ValueType
 import dev.necr0manthre.innotournament.tournament.events.event_data.PlayerKilled
 import dev.necr0manthre.innotournament.tournament.events.events.AdvancementEvent
 import dev.necr0manthre.innotournament.tournament.events.events.PlayerTickEvent
@@ -22,14 +23,16 @@ import org.bukkit.event.entity.PlayerDeathEvent
 
 object InnoTournamentEvents {
     private fun <E : TournamentEvent<*>, T : IParser<String, E>> register(parser: T): T {
-        return TournamentEventParserRegistry.register(String::class, parser)
+        return TournamentEventParserRegistry.register(parser)
     }
 
     fun init() {
     }
 
     val TIME = register(
-        OneArgumentParser("time", { time -> TimeEvent(time.toLong()) })
+        OneArgumentParser("time", { time ->
+            TimeEvent(time.toLong().also { require(it >= 0L) { "time must be nonnegative" } })
+        })
     )
 
     val PREPARE = register(
@@ -72,10 +75,11 @@ object InnoTournamentEvents {
     )
 
     val PLAYER_KILLED = register(
-        SimpleDecoder("playerKilled") {
+        SimpleDecoder<TournamentEvent<*>>("playerKilled") {
             object : BukkitEventBasedTournamentEvent<PlayerDeathEvent, PlayerKilled>(
                 PlayerDeathEvent::class,
-                PlayerDeathEvent::getHandlerList
+                PlayerDeathEvent::getHandlerList,
+                ValueType.of(PlayerKilled::class)
             ) {
                 override fun subscribe(tournament: Tournament): TournamentEventInstance<PlayerKilled> {
                     return subscribeBukkit(tournament) { event, callback ->
@@ -100,7 +104,7 @@ object InnoTournamentEvents {
 
     val PLAYER_TICK_WITH_PERIOD = register(
         OneArgumentParser("playerTick", { period ->
-            PlayerTickEvent(period.toInt())
+            PlayerTickEvent(period.toInt().also { require(it > 0) { "playerTick period must be positive" } })
         })
     )
 
@@ -109,6 +113,7 @@ object InnoTournamentEvents {
         unsubscribe: Tournament.((Any?) -> Unit) -> Unit
     ): TournamentEvent<Any?> {
         return LambdaTournamentEvent(
+            valueType = ValueType.of(Any::class).nullable(),
             subscribeAction = { currentTournament, callback ->
                 val listener: (Any?) -> Unit = { callback(null) }
                 currentTournament.subscribe(listener)
