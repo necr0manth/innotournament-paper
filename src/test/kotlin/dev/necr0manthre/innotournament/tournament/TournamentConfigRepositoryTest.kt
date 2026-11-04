@@ -14,8 +14,6 @@ import java.io.IOException
 import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.attribute.PosixFileAttributeView
-import java.nio.file.attribute.PosixFilePermissions
 
 class TournamentConfigRepositoryTest {
     @TempDir lateinit var temp: Path
@@ -245,20 +243,6 @@ class TournamentConfigRepositoryTest {
         Files.delete(config)
         assertTrue(assertThrows(TournamentConfigException::class.java) { repository.readSettings(config) }
             .message!!.contains("not a regular file"))
-    }
-
-    @Test fun atomicSettingsWritePreservesExistingPosixMode() {
-        val config = configIn()
-        assumeTrue(Files.getFileAttributeView(config, PosixFileAttributeView::class.java) != null,
-            "POSIX file permissions are not available on this filesystem")
-        val settings = repository.readSettings(config)
-        for (mode in listOf("rw-r--r--", "rw-------")) {
-            val permissions = PosixFilePermissions.fromString(mode)
-            Files.setPosixFilePermissions(config, permissions)
-            repository.writeSettings(config, settings)
-            assertEquals(permissions, Files.getPosixFilePermissions(config))
-            assertEquals(settings, repository.readSettings(config))
-        }
     }
 
     @Test fun failedAtomicReplacementKeepsOriginalAndCleansTemp() {

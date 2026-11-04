@@ -3,15 +3,14 @@ package dev.necr0manthre.innotournament.tournament
 import dev.necr0manthre.innotournament.tournament.events.EventLoader
 import dev.necr0manthre.innotournament.tournament.events.EventPlan
 import dev.necr0manthre.innotournament.tournament.events.EventPlanLoadException
-import dev.necr0manthre.innotournament.util.AtomicTextFile
+import io.papermc.paper.util.AtomicFiles
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 
 /** File operations on a caller-selected definition; selection and lifecycle belong to CORE. */
 class TournamentConfigRepository(
-    private val codec: TournamentConfigCodec = TournamentConfigCodec(),
-    private val files: AtomicTextFile = AtomicTextFile()
+    private val codec: TournamentConfigCodec = TournamentConfigCodec()
 ) {
     /** Decode only the eleven typed settings. This does not open either event file. */
     fun readSettings(path: Path): TournamentSettings {
@@ -44,7 +43,14 @@ class TournamentConfigRepository(
     /** Typed settings-only write; event file validity is deliberately not consulted. */
     fun writeSettings(path: Path, settings: TournamentSettings) {
         val json = codec.encode(settings)
-        files.replace(path, json)
+        require(path.toString().isNotEmpty()) { "Settings file path must not be empty" }
+        val target = path.toAbsolutePath().normalize()
+        try {
+            Files.createDirectories(target.parent)
+            AtomicFiles.atomicWrite(target) { temporary -> Files.writeString(temporary, json) }
+        } catch (e: IOException) {
+            throw IOException("Cannot atomically write tournament settings '$target': ${e.message}", e)
+        }
     }
 
     private fun loadPlan(target: Path, selected: Path, name: String): EventPlan {
