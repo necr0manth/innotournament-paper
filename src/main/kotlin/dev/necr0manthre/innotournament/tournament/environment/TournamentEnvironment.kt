@@ -8,6 +8,8 @@ import org.bukkit.Server
 import org.bukkit.World
 import org.bukkit.WorldBorder
 import org.bukkit.block.Block
+import org.bukkit.block.BlockFace
+import org.bukkit.block.data.type.Piston
 import org.bukkit.block.structure.Mirror
 import org.bukkit.block.structure.StructureRotation
 import org.bukkit.entity.Entity
@@ -18,10 +20,11 @@ import org.bukkit.event.entity.EntityChangeBlockEvent
 import org.bukkit.event.entity.EntityExplodeEvent
 import org.bukkit.event.player.PlayerBucketEmptyEvent
 import org.bukkit.event.player.PlayerBucketFillEvent
+import org.bukkit.event.world.StructureGrowEvent
 import org.bukkit.plugin.Plugin
 import org.bukkit.structure.Structure
 import org.bukkit.structure.StructureManager
-import org.bukkit.util.Vector
+import org.bukkit.util.BlockVector
 import java.util.Random
 import kotlin.math.abs
 import kotlin.math.ceil
@@ -43,6 +46,9 @@ class TournamentEnvironment(
     private var structureTemplate: Structure? = null
     private var structureResolved = false
 
+    val gameWorld: World
+        get() = worlds.gameWorld
+
     init {
         require(preStartSpawn.world === worlds.preStartWorld) { "Pre-start point belongs to another world" }
         require(gameSpawn.world === worlds.gameWorld) { "Game point belongs to another world" }
@@ -52,6 +58,7 @@ class TournamentEnvironment(
     /** Set the pre-start spawn/centers, and expand only the built-in End border to its Paper max. */
     fun applyPrepare() {
         requireMainThread()
+        validateStartBoxConfiguration()
         val pos = blockPosition(preStartSpawn)
         val centers = mutableListOf<CenterChange>()
 
@@ -95,8 +102,9 @@ class TournamentEnvironment(
     fun placeStartBox() {
         requireMainThread()
         if (startBoxStructureKey == null) return
-        val template = resolveStructure()
-            ?: error("Start box structure '$startBoxStructureKey' was not found")
+        val template = requireNotNull(resolveStructure()) {
+            "Start box structure '$startBoxStructureKey' was not found"
+        }
         val region = boxRegion(template)
         val existing = startBox
         if (existing != null) {
@@ -149,6 +157,9 @@ class TournamentEnvironment(
 
     /** Return a new Bukkit Location each time. */
     fun preStartRespawnLocation(): Location = preStartSpawn.toLocation()
+
+    /** Return a new Bukkit Location at this run's configured game spawn. */
+    fun gameSpawnLocation(): Location = gameSpawn.toLocation()
 
     /** Set the game spawn and all vanilla-related centers using the original dimension branches. */
     fun applyStart() {
@@ -274,16 +285,27 @@ class TournamentEnvironment(
         }
     }
 
+    private fun validateStartBoxConfiguration() {
+        if (startBoxStructureKey != null) {
+            val template = requireNotNull(resolveStructure()) {
+                "Start box structure '$startBoxStructureKey' was not found"
+            }
+            boxRegion(template)
+        }
+    }
+
     private fun resolveStructure(): Structure? {
         if (!structureResolved) {
-            structureTemplate = startBoxStructureKey?.let { structureManager.loadStructure(it) }
+            structureTemplate = startBoxStructureKey?.let { key ->
+                structureManager.loadStructure(key)?.let(structureManager::copy)
+            }
             structureResolved = true
         }
         return structureTemplate
     }
 
     private fun boxRegion(structure: Structure): BoxRegion {
-        val size: Vector = structure.size
+        val size: BlockVector = structure.size
         val sizeX = size.blockX
         val sizeY = size.blockY
         val sizeZ = size.blockZ
@@ -372,7 +394,7 @@ class TournamentEnvironment(
             if (event.replacedBlockStates.any { protected(it.block) }) event.isCancelled = true
         }
         @EventHandler fun onBucketEmpty(event: PlayerBucketEmptyEvent) {
-            if (protected(event.block.getRelative(event.blockFace))) event.isCancelled = true
+            if (protected(event.block)) event.isCancelled = true
         }
         @EventHandler fun onBucketFill(event: PlayerBucketFillEvent) { if (protected(event.block)) event.isCancelled = true }
         @EventHandler fun onEntityExplode(event: EntityExplodeEvent) { event.blockList().removeIf(::protected) }
@@ -381,7 +403,7 @@ class TournamentEnvironment(
             if (protectPiston(event.blocks, event.block, event.direction)) event.isCancelled = true
         }
         @EventHandler fun onPistonRetract(event: BlockPistonRetractEvent) {
-            if (protectPiston(event.blocks, event.block, event.direction.oppositeFace)) event.isCancelled = true
+            if (protectPiston(event.blocks, event.block, event.direction)) event.isCancelled = true
         }
         @EventHandler fun onFlow(event: BlockFromToEvent) {
             if (protected(event.block) || protected(event.toBlock)) event.isCancelled = true
@@ -389,10 +411,26 @@ class TournamentEnvironment(
         @EventHandler fun onSpread(event: BlockSpreadEvent) {
             if (protected(event.block) || protected(event.source)) event.isCancelled = true
         }
-        @EventHandler fun onBurn(event: BlockBurnEvent) { if (protected(event.block)) event.isCancelled = true }
-        @EventHandler fun onIgnite(event: BlockIgniteEvent) { if (protected(event.block)) event.isCancelled = true }
+        @EventHandler fun onBurn(event: BlockBurnEvent) {
+            if (protected(event.block) || event.ignitingBlock?.let(::protected) == true) event.isCancelled = true
+        }
+        @EventHandler fun onIgnite(event: BlockIgniteEvent) {
+            if (protected(event.block) || event.ignitingBlock?.let(::protected) == true) event.isCancelled = true
+        }
         @EventHandler fun onForm(event: BlockFormEvent) { if (protected(event.block)) event.isCancelled = true }
         @EventHandler fun onGrow(event: BlockGrowEvent) { if (protected(event.block)) event.isCancelled = true }
+        @EventHandler fun onFade(event: BlockFadeEvent) { if (protected(event.block)) event.isCancelled = true }
+        @EventHandler fun onLeavesDecay(event: LeavesDecayEvent) { if (protected(event.block)) event.isCancelled = true }
+        @EventHandler fun onFluidLevelChange(event: FluidLevelChangeEvent) {
+            if (protected(event.block)) event.isCancelled = true
+        }
+        @EventHandler fun onSpongeAbsorb(event: SpongeAbsorbEvent) {
+            if (protected(event.block)) {
+                event.isCancelled = true
+            } else {
+                event.blocks.removeIf { protected(it.block) }
+            }
+        }
         @EventHandler fun onEntityChangeBlock(event: EntityChangeBlockEvent) { if (protected(event.block)) event.isCancelled = true }
         @EventHandler fun onPhysics(event: BlockPhysicsEvent) { if (protected(event.block)) event.isCancelled = true }
         @EventHandler fun onFertilize(event: BlockFertilizeEvent) {
@@ -402,8 +440,12 @@ class TournamentEnvironment(
             if (event.blocks.any { protected(it.block) }) event.isCancelled = true
         }
 
-        private fun protectPiston(blocks: List<Block>, piston: Block, movement: org.bukkit.block.BlockFace): Boolean =
-            protected(piston) || blocks.any { protected(it) || protected(it.getRelative(movement)) }
+        private fun protectPiston(blocks: List<Block>, piston: Block, movement: BlockFace): Boolean {
+            val head = piston.getRelative((piston.blockData as Piston).facing)
+            return protected(piston) || protected(head) || blocks.any {
+                protected(it) || protected(it.getRelative(movement))
+            }
+        }
     }
 
     private fun requireMainThread() {
