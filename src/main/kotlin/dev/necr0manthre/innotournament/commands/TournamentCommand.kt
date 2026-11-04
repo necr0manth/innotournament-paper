@@ -3,7 +3,7 @@ package dev.necr0manthre.innotournament.commands
 import com.mojang.brigadier.Command
 import com.mojang.brigadier.arguments.StringArgumentType
 import dev.necr0manthre.innotournament.Innotournament
-import dev.necr0manthre.innotournament.teams.TeamManager
+import dev.necr0manthre.innotournament.teams.PluginTeam.TeamManager
 import dev.necr0manthre.innotournament.tournament.Tournament
 import dev.necr0manthre.innotournament.tournament.TournamentData
 import dev.necr0manthre.innotournament.tournament.TournamentPhase
