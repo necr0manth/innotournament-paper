@@ -7,12 +7,16 @@ import org.bukkit.Server
 import org.bukkit.World
 import org.bukkit.WorldBorder
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotSame
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import org.bukkit.plugin.Plugin
+import org.bukkit.util.Vector
+import org.bukkit.structure.Structure
+import org.bukkit.structure.StructureManager
 import java.lang.reflect.Proxy
 import java.util.UUID
 
@@ -27,13 +31,13 @@ class TournamentEnvironmentTest {
         val prePoint = point(normal)
         val gamePoint = point(normal)
 
-        TournamentEnvironment(bound, prePoint, gamePoint, tickets())
+        TournamentEnvironment(bound, prePoint, gamePoint, tickets(), testPlugin(), structureManager(), null, prePoint)
         assertUnchanged(normal, nether, end)
         assertThrows(IllegalArgumentException::class.java) {
-            TournamentEnvironment(bound, point(other), gamePoint, tickets())
+            TournamentEnvironment(bound, point(other), gamePoint, tickets(), testPlugin(), structureManager(), null, point(other))
         }
         assertThrows(IllegalArgumentException::class.java) {
-            TournamentEnvironment(bound, prePoint, point(other), tickets())
+            TournamentEnvironment(bound, prePoint, point(other), tickets(), testPlugin(), structureManager(), null, prePoint)
         }
         assertUnchanged(normal, nether, end, other)
     }
@@ -184,7 +188,8 @@ class TournamentEnvironmentTest {
         assertThrows(IllegalArgumentException::class.java) {
             TournamentEnvironment(
                 bindings(normal, normal, normal, nether, end),
-                WorldPoint(normal.world, Double.MAX_VALUE, 83.0, 236.0), point(normal), tickets()
+                WorldPoint(normal.world, Double.MAX_VALUE, 83.0, 236.0), point(normal), tickets(),
+                testPlugin(), structureManager(), null, point(normal)
             ).applyPrepare()
         }
         assertUnchanged(normal, nether, end)
@@ -275,7 +280,8 @@ class TournamentEnvironmentTest {
         val tickets = tickets()
         val generatorLease = tickets.acquire(game.world, -51, 14)
         val effects = TournamentEnvironment(
-            bindings(normal, game, normal, nether, end), point(normal), point(game), tickets
+            bindings(normal, game, normal, nether, end), point(normal), point(game), tickets,
+            testPlugin(), structureManager(), null, point(normal)
         )
 
         effects.applyPrepare()
@@ -290,6 +296,47 @@ class TournamentEnvironmentTest {
         assertEquals(game.ticketAdds.toSet(), game.ticketRemovals.toSet())
     }
 
+    @Test
+    fun configuredBoxGeometryWorksBeforePlacementAndRespawnLocationIsFresh() {
+        val normal = world("overworld")
+        val nether = world("the_nether")
+        val end = world("the_end")
+        val key = NamespacedKey("test", "box")
+        val template = structure(Vector(7, 5, 9))
+        val effects = TournamentEnvironment(
+            bindings(normal, normal, normal, nether, end), point(normal), point(normal), tickets(),
+            testPlugin(), structureManager(template), key,
+            WorldPoint(normal.world, -808.0, 80.0, 232.0)
+        )
+
+        assertTrue(effects.isInsideStartBox(point(normal)))
+        assertTrue(!effects.isInsideStartBox(WorldPoint(normal.world, -801.0, 84.0, 232.0)))
+        assertTrue(!effects.isInsideStartBox(WorldPoint(nether.world, -805.0, 83.0, 236.0)))
+        val first = effects.preStartRespawnLocation()
+        val second = effects.preStartRespawnLocation()
+        assertNotSame(first, second)
+        first.x = 10_000.0
+        assertEquals(-805.0, second.x)
+        assertTrue(normal.ticketAdds.isEmpty())
+        assertUnchanged(normal, nether, end)
+    }
+
+    @Test
+    fun invalidConfiguredBoxGeometryFailsBeforeTicketsOrWorldChanges() {
+        val normal = world("overworld")
+        val nether = world("the_nether")
+        val end = world("the_end")
+        val effects = TournamentEnvironment(
+            bindings(normal, normal, normal, nether, end), point(normal), point(normal), tickets(),
+            testPlugin(), structureManager(structure(Vector(0, 5, 9))),
+            NamespacedKey("test", "bad"), WorldPoint(normal.world, -808.0, 80.0, 232.0)
+        )
+
+        assertThrows(IllegalArgumentException::class.java) { effects.isInsideStartBox(point(normal)) }
+        assertTrue(normal.ticketAdds.isEmpty())
+        assertUnchanged(normal, nether, end)
+    }
+
     private fun assertUnchanged(vararg worlds: FakeWorld) {
         for (world in worlds) {
             assertTrue(world.mutations.isEmpty(), "Unexpected mutations for ${world.key}: ${world.mutations}")
@@ -299,10 +346,11 @@ class TournamentEnvironmentTest {
     private fun environment(
         pre: FakeWorld, game: FakeWorld, normal: FakeWorld, nether: FakeWorld, end: FakeWorld
     ): TournamentEnvironment = TournamentEnvironment(
-        bindings(pre, game, normal, nether, end), point(pre), point(game), tickets()
+        bindings(pre, game, normal, nether, end), point(pre), point(game), tickets(),
+        testPlugin(), structureManager(), null, point(pre)
     )
 
-    private fun tickets() = PluginChunkTickets(Proxy.newProxyInstance(
+    private fun testPlugin() = Proxy.newProxyInstance(
         Plugin::class.java.classLoader, arrayOf(Plugin::class.java)
     ) { self, method, args ->
         when (method.name) {
@@ -311,7 +359,21 @@ class TournamentEnvironmentTest {
             "toString" -> "Test plugin"
             else -> null
         }
-    } as Plugin)
+    } as Plugin
+
+    private fun structureManager(structure: Structure? = null) = Proxy.newProxyInstance(
+        StructureManager::class.java.classLoader, arrayOf(StructureManager::class.java)
+    ) { _, method, args ->
+        if (method.name == "loadStructure") structure else error("Unexpected StructureManager method: ${method.name}")
+    } as StructureManager
+
+    private fun structure(size: Vector) = Proxy.newProxyInstance(
+        Structure::class.java.classLoader, arrayOf(Structure::class.java)
+    ) { _, method, _ ->
+        if (method.name == "getSize") size else error("Unexpected Structure method: ${method.name}")
+    } as Structure
+
+    private fun tickets() = PluginChunkTickets(testPlugin())
 
     private fun bindings(
         pre: FakeWorld, game: FakeWorld, normal: FakeWorld, nether: FakeWorld, end: FakeWorld
@@ -368,6 +430,8 @@ class TournamentEnvironmentTest {
                 "getKey" -> key
                 "getUID" -> uid
                 "getWorldBorder" -> border
+                "getMinHeight" -> -64
+                "getMaxHeight" -> 320
                 "setSpawnLocation" -> {
                     assertEquals(3, args!!.size)
                     spawns.add(Triple(args[0] as Int, args[1] as Int, args[2] as Int))
