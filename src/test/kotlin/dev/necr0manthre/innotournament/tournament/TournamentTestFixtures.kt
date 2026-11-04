@@ -93,6 +93,7 @@ internal fun <T> withPrimaryTestServer(action: () -> T): T {
     val server = testProxy<Server> { method, _ ->
         when (method) {
             "isPrimaryThread" -> true
+            "getPlayer" -> null
             "getOnlinePlayers" -> emptyList<Player>()
             "getOfflinePlayer" -> testProxy<OfflinePlayer> { method, _ ->
                 if (method == "getName") "Saved" else unexpectedTestCall(method)

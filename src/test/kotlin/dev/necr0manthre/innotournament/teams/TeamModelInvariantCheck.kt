@@ -559,7 +559,9 @@ private fun verifyJoinScoreGuards(manager: TeamManager) {
 
     val leave: (TeamChange) -> Unit = tournament::onPlayerLeaveTeam
     manager.afterLeave.subscribe(leave)
-    check(team.tryKickPlayerFromTeam(second).isSuccess)
+    dev.necr0manthre.innotournament.tournament.withPrimaryTestServer {
+        check(team.tryKickPlayerFromTeam(second).isSuccess)
+    }
     manager.afterLeave.unsubscribe(leave)
     check(record.score == originalScore) // Leaving never recalculates the old team's score.
     check(manager.removeTeam(team))
