@@ -7,6 +7,7 @@ import dev.necr0manthre.innotournament.teams.PluginTeam
 import dev.necr0manthre.innotournament.teams.PluginTeam.TeamManager
 import dev.necr0manthre.innotournament.teams.events.TeamChange
 import dev.necr0manthre.innotournament.tournament.events.*
+import dev.necr0manthre.innotournament.tournament.events.event_data.TeamAdvancement
 import net.kyori.adventure.text.Component
 import org.bukkit.*
 import org.bukkit.block.structure.Mirror
@@ -18,6 +19,7 @@ import org.bukkit.event.Listener
 import org.bukkit.event.entity.PlayerDeathEvent
 import org.bukkit.event.player.PlayerRespawnEvent
 import java.util.*
+import java.util.Collections
 import kotlin.math.min
 
 class Tournament(
@@ -41,18 +43,46 @@ class Tournament(
     }
 
     private class PlayerTournamentStateImpl : PlayerTournamentState {
-        var tournamentPlayer: TournamentPlayer? = null
+        var participation: TournamentPlayer? = null
 
         override val tournament: Tournament?
-            get() = tournamentPlayer?.tournament
+            get() = participation?.tournament
     }
 
     private class TeamTournamentStateImpl : TeamTournamentState {
-        var tournamentTeam: TournamentTeam? = null
-        var initialized: Boolean = false
+        var participation: TournamentTeam? = null
 
         override val tournament: Tournament?
-            get() = tournamentTeam?.tournament
+            get() = participation?.tournament
+    }
+
+    private inner class TournamentPlayerImpl(
+        override val pluginPlayer: PluginPlayer,
+        override val team: TournamentTeam
+    ) : TournamentPlayer {
+        private var livesValue = 3
+        private var isPrepared = false
+
+        override val tournament: Tournament get() = this@Tournament
+        override val lives: Int get() = livesValue
+        override val prepared: Boolean get() = isPrepared
+
+        override fun setLives(value: Int) = setParticipationLives(this, value)
+
+        fun setLivesInternally(value: Int) { livesValue = value }
+        fun markPrepared() { isPrepared = true }
+    }
+
+    private inner class TournamentTeamImpl(
+        override val pluginTeam: PluginTeam
+    ) : TournamentTeam {
+        override val tournament: Tournament get() = this@Tournament
+        var scoreValue = 0.0
+        override val score: Double get() = scoreValue
+        override val deleted: Boolean get() = teamManager.getTeamById(pluginTeam.id) !== pluginTeam
+        override val advancements: Set<NamespacedKey> get() = advancementHandler.advancements(this)
+        override val players: List<TournamentPlayer>
+            get() = Collections.unmodifiableList(pluginTeam.players.mapNotNull(::getPlayer))
     }
 
     private fun PluginPlayer.getTournamentState(): PlayerTournamentStateImpl =
@@ -61,14 +91,17 @@ class Tournament(
     private fun PluginTeam.getTournamentState(): TeamTournamentStateImpl =
         tournamentState as TeamTournamentStateImpl
 
-    private fun clearPlayerState(player: PluginPlayer) {
+    private fun clearPlayerState(player: PluginPlayer, expected: TournamentPlayer? = null) {
         val state = player.getTournamentState()
-        if (state.tournamentPlayer?.tournament === this) state.tournamentPlayer = null
+        val participation = state.participation
+        if (participation?.tournament === this && (expected == null || participation === expected)) {
+            state.participation = null
+        }
     }
 
     private fun clearTeamState(team: PluginTeam) {
         val state = team.getTournamentState()
-        if (state.tournamentTeam?.tournament === this) state.tournamentTeam = null
+        if (state.participation?.tournament === this) state.participation = null
     }
 
     private fun isPlayerBoundToAnotherTournament(player: PluginPlayer): Boolean {
@@ -86,7 +119,8 @@ class Tournament(
     val onEnd: EventSubscriptionView<Unit> = onEndEvent.asSubscriptionView()
     val onRemove: EventSubscriptionView<Unit> = onRemoveEvent.asSubscriptionView()
     val playerRunOutOfLives: EventSubscriptionView<TournamentPlayer> = playerRunOutOfLivesEvent.asSubscriptionView()
-    val advancementHandler = TournamentAdvancementHandler(this)
+    private val advancementHandler = TournamentAdvancementHandler(this)
+    val teamAdvancementEvent: EventSubscriptionView<TeamAdvancement> = advancementHandler.teamAdvancementEvent
 
     var phase: TournamentPhase = TournamentPhase.CREATED
         private set
@@ -95,8 +129,9 @@ class Tournament(
     private val preStartEventInstances = mutableSetOf<TournamentEventInstance<*>>()
     private val mainEventInstances = mutableSetOf<TournamentEventInstance<*>>()
     private val removedEvents = mutableSetOf<TournamentEventInstance<*>>()
-    private val players = HashSet<TournamentPlayer>()
-    private val teams = HashSet<TournamentTeam>()
+    private val players = LinkedHashSet<TournamentPlayer>()
+    private val teams = LinkedHashSet<TournamentTeam>()
+    private val preparedTeams = LinkedHashSet<TournamentTeam>()
     private var listener: Listener? = null
     private var teamJoinListener: ((TeamChange) -> Unit)? = null
     private var teamLeaveListener: ((TeamChange) -> Unit)? = null
@@ -199,8 +234,8 @@ class Tournament(
         }
 
         val tournamentPlayer = getOrCreateTournamentPlayer(pluginPlayer) ?: return
-        if (!tournamentPlayer.initialized) {
-            tournamentPlayer.initialized = setupPlayer(tournamentPlayer)
+        if (!tournamentPlayer.prepared && setupPlayer(tournamentPlayer)) {
+            (tournamentPlayer as TournamentPlayerImpl).markPrepared()
         }
 
         if (tournamentPlayer.lives == 0) {
@@ -217,11 +252,10 @@ class Tournament(
     private fun checkTeam(team: PluginTeam, resetAcceptAll: Boolean) {
         if (phase != TournamentPhase.STARTED) return
         val tournamentTeam = getOrCreateTournamentTeam(team) ?: return
-        val state = team.getTournamentState()
-        if (!state.initialized) {
+        if (preparedTeams.add(tournamentTeam)) {
             setupTeam(tournamentTeam, resetAcceptAll)
-            state.initialized = true
         }
+        team.players.forEach(::getOrCreateTournamentPlayer)
     }
 
     val elapsedTime: Long
@@ -229,7 +263,6 @@ class Tournament(
 
     private fun setupPlayer(tournamentPlayer: TournamentPlayer): Boolean {
         val player = tournamentPlayer.player ?: return false
-        tournamentPlayer.lives = 3
         player.health = player.maxHealth
         player.inventory.clear()
         player.foodLevel = 20
@@ -239,25 +272,55 @@ class Tournament(
         return true
     }
 
-    fun setupTeam(team: TournamentTeam) {
-        setupTeam(team, resetAcceptAll = true)
-    }
-
     private fun setupTeam(team: TournamentTeam, resetAcceptAll: Boolean) {
-        team.score = 0.0
-        team.advancements.clear()
-        if (resetAcceptAll) team.acceptAll = false
+        (team as TournamentTeamImpl).scoreValue = 0.0
+        if (resetAcceptAll) team.pluginTeam.acceptAll = false
     }
 
     fun addScoresToPlayer(player: TournamentPlayer?, score: Double) {
-        if (player == null || player.lives == 0) return
+        if (player == null) return
+        requireCanonicalPlayer(player)
+        check(phase == TournamentPhase.STARTED && player.prepared) {
+            "Player score requires a prepared participation in a started tournament"
+        }
         addScores(player.team, score)
     }
 
     fun addScores(team: TournamentTeam?, score: Double) {
         if (team == null) return
-        team.score += score * scoreModifier(team.players.size)
+        requireCanonicalTeam(team)
+        require(score.isFinite()) { "Score must be finite" }
+        val delta = score * scoreModifier(team.pluginTeam.players.size)
+        require(delta.isFinite()) { "Calculated score must be finite" }
+        val updated = team.score + delta
+        require(updated.isFinite()) { "Calculated score must be finite" }
+        (team as TournamentTeamImpl).scoreValue = updated
         updateSidebars()
+    }
+
+    private fun setParticipationLives(player: TournamentPlayerImpl, value: Int) {
+        require(value >= 0) { "Lives cannot be negative" }
+        check(phase == TournamentPhase.STARTED) { "Lives can only change in a started tournament" }
+        requireCanonicalPlayer(player)
+        check(player.prepared && getTeam(player.team.pluginTeam) === player.team) {
+            "Lives require a prepared player on an active team"
+        }
+        val previous = player.lives
+        player.setLivesInternally(value)
+        updateSidebars()
+        if (previous > 0 && value == 0) playerRunOutOfLivesEvent.invoke(player)
+    }
+
+    private fun requireCanonicalPlayer(player: TournamentPlayer) {
+        require(player.tournament === this && getPlayer(player.pluginPlayer) === player) {
+            "Tournament player is stale or belongs to another tournament"
+        }
+    }
+
+    private fun requireCanonicalTeam(team: TournamentTeam) {
+        require(team.tournament === this && getTeam(team.pluginTeam) === team) {
+            "Tournament team is stale or belongs to another tournament"
+        }
     }
 
     // The result set includes deleted history; only exact live registry objects receive places.
@@ -279,7 +342,10 @@ class Tournament(
         val team = getTeam(pluginTeam) ?: return
         val oldModifier = scoreModifier(event.sizeBefore)
         if (oldModifier != 0.0) {
-            team.score *= scoreModifier(event.sizeAfter) / oldModifier
+            val ratio = scoreModifier(event.sizeAfter) / oldModifier
+            val updated = team.score * ratio
+            require(ratio.isFinite() && updated.isFinite()) { "Calculated score must be finite" }
+            (team as TournamentTeamImpl).scoreValue = updated
         }
         event.player.player?.let(::checkPlayer)
         updateSidebars()
@@ -289,7 +355,7 @@ class Tournament(
         if (phase != TournamentPhase.STARTED) return
         // A completed leave expires that runtime participation. A later join gets
         // a fresh TournamentPlayer and its normal setup, even on an A -> B move.
-        clearPlayer(event.player)
+        clearPlayer(event.player, event.team)
         // Leaving never changes the historical score of the departing team.
         updateSidebars()
     }
@@ -302,12 +368,12 @@ class Tournament(
         clearTeamState(team)
     }
 
-    fun getOrCreateTournamentTeam(team: PluginTeam): TournamentTeam? {
+    private fun getOrCreateTournamentTeam(team: PluginTeam): TournamentTeam? {
         if (teamManager.getTeamById(team.id) !== team) return null
         val state = team.getTournamentState()
-        val tournamentTeam = state.tournamentTeam ?: run {
-            val newTournamentTeam = TournamentTeam(team, this)
-            state.tournamentTeam = newTournamentTeam
+        val tournamentTeam = state.participation ?: run {
+            val newTournamentTeam = TournamentTeamImpl(team)
+            state.participation = newTournamentTeam
             teams.add(newTournamentTeam)
             return@run newTournamentTeam
         }
@@ -316,35 +382,40 @@ class Tournament(
         return tournamentTeam
     }
 
-    fun getOrCreateTournamentPlayer(player: PluginPlayer): TournamentPlayer? {
+    private fun getOrCreateTournamentPlayer(player: PluginPlayer): TournamentPlayer? {
         val team = player.team ?: return null
-        if (getOrCreateTournamentTeam(team) == null)
-            return null
+        val tournamentTeam = getOrCreateTournamentTeam(team) ?: return null
         val playerState = player.getTournamentState()
-        val tournamentPlayer: TournamentPlayer = playerState.tournamentPlayer ?: run {
-            val newTournamentPlayer = TournamentPlayer(player, this)
-            playerState.tournamentPlayer = newTournamentPlayer
+        val tournamentPlayer: TournamentPlayer = playerState.participation ?: run {
+            val newTournamentPlayer = TournamentPlayerImpl(player, tournamentTeam)
+            playerState.participation = newTournamentPlayer
             players.add(newTournamentPlayer)
             return@run newTournamentPlayer
         }
-        if (tournamentPlayer.tournament != this)
+        if (tournamentPlayer.tournament !== this || tournamentPlayer.team !== tournamentTeam)
             return null
         return tournamentPlayer
     }
 
     fun getPlayer(player: PluginPlayer): TournamentPlayer? {
         val state = player.getTournamentState()
-        if (state.tournament != this)
+        val participation = state.participation
+        if (participation?.tournament !== this || participation.pluginPlayer.team !== participation.team.pluginTeam)
             return null
-        return state.tournamentPlayer
+        return participation
     }
 
     fun getTeam(team: PluginTeam): TournamentTeam? {
         val state = team.getTournamentState()
-        if (state.tournament != this)
+        val participation = state.participation
+        if (participation?.tournament !== this || teamManager.getTeamById(team.id) !== team)
             return null
-        return state.tournamentTeam
+        return participation
     }
+
+    fun players(): List<TournamentPlayer> = Collections.unmodifiableList(players.toList())
+
+    fun teams(): List<TournamentTeam> = Collections.unmodifiableList(teams.toList())
 
     private fun subscribeAll(
         events: EventPlan,
@@ -382,7 +453,7 @@ class Tournament(
             fun onDeath(event: PlayerDeathEvent) {
                 val data = getPlayer(PluginPlayer.get(event.entity)) ?: return
                 if (phase == TournamentPhase.STARTED && data.lives > 0) {
-                    data.lives--
+                    (data as TournamentPlayerImpl).setLivesInternally(data.lives - 1)
                     updateSidebars()
                     if (data.lives == 0) playerRunOutOfLivesEvent.invoke(data)
                 }
@@ -411,11 +482,16 @@ class Tournament(
 
         if (phase != TournamentPhase.STARTED) return
         val aliveTeams = teams.filter { team ->
-            team.players.any { (getPlayer(it)?.lives ?: 0) > 0 }
+            team.players.any { it.lives > 0 }
         }
         if (aliveTeams.size > 1) return
 
-        aliveTeams.singleOrNull()?.let { it.score += lastTeamScore }
+        aliveTeams.singleOrNull()?.let { team ->
+            require(lastTeamScore.isFinite()) { "Final score must be finite" }
+            val updated = team.score + lastTeamScore
+            require(updated.isFinite()) { "Calculated score must be finite" }
+            (team as TournamentTeamImpl).scoreValue = updated
+        }
         broadcastFinalStandings()
         onEndEvent.invoke(Unit)
         phase = TournamentPhase.ENDED
@@ -463,16 +539,21 @@ class Tournament(
         teamRemoveListener = null
     }
 
-    private fun clearPlayer(player: PluginPlayer) {
-        players.remove(player.getTournamentState().tournamentPlayer)
-        clearPlayerState(player)
+    private fun clearPlayer(player: PluginPlayer, expectedTeam: PluginTeam? = null) {
+        val participation = player.getTournamentState().participation ?: return
+        if (participation.tournament !== this ||
+            (expectedTeam != null && participation.team.pluginTeam !== expectedTeam)
+        ) return
+        players.remove(participation)
+        clearPlayerState(player, participation)
     }
 
     private fun clearParticipationState() {
-        players.forEach { clearPlayerState(it.pluginPlayer) }
+        players.forEach { clearPlayerState(it.pluginPlayer, it) }
         teams.forEach { clearTeamState(it.pluginTeam) }
         players.clear()
         teams.clear()
+        preparedTeams.clear()
     }
 
     private fun setWorldBorderAndSpawn(location: Location) {

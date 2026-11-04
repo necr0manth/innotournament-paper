@@ -11,11 +11,16 @@ import org.bukkit.event.HandlerList
 import org.bukkit.event.Listener
 import org.bukkit.event.player.PlayerAdvancementDoneEvent
 import org.bukkit.event.player.PlayerJoinEvent
+import org.bukkit.NamespacedKey
+import org.bukkit.advancement.Advancement
 import java.lang.ref.WeakReference
+import java.util.Collections
+import java.util.LinkedHashMap
 
 class TournamentAdvancementHandler(tournament: Tournament) {
     private val tournament = WeakReference(tournament)
     private val teamAdvancementBackingEvent = SimpleEvent<TeamAdvancement>()
+    private val teamAdvancements = LinkedHashMap<TournamentTeam, LinkedHashMap<NamespacedKey, Advancement>>()
     val teamAdvancementEvent: EventSubscriptionView<TeamAdvancement> = teamAdvancementBackingEvent.asSubscriptionView()
     private var listener: Listener? = null
 
@@ -39,10 +44,17 @@ class TournamentAdvancementHandler(tournament: Tournament) {
         listener = null
     }
 
+    fun advancements(team: TournamentTeam): Set<NamespacedKey> = Collections.unmodifiableSet(
+        LinkedHashSet(teamAdvancements[team]?.keys.orEmpty())
+    )
+
+    private fun record(team: TournamentTeam, advancement: Advancement): Boolean =
+        teamAdvancements.getOrPut(team, ::LinkedHashMap).putIfAbsent(advancement.key, advancement) == null
+
     private fun handle(event: PlayerAdvancementDoneEvent) {
         val currentTournament = tournament.get() ?: return
         val team = PluginPlayer.get(event.player).team?.let { currentTournament.getTeam(it) } ?: return
-        if (team.advancements.putIfAbsent(event.advancement, event.player.getAdvancementProgress(event.advancement)) == null) {
+        if (record(team, event.advancement)) {
             teamAdvancementBackingEvent.invoke(TeamAdvancement(team, event.advancement))
         }
 
@@ -56,7 +68,7 @@ class TournamentAdvancementHandler(tournament: Tournament) {
     private fun handleJoin(event: PlayerJoinEvent) {
         val currentTournament = tournament.get() ?: return
         val team = PluginPlayer.get(event.player).team?.let { currentTournament.getTeam(it) } ?: return
-        team.advancements.keys.forEach { advancement ->
+        teamAdvancements[team]?.values.orEmpty().forEach { advancement ->
             val progress = event.player.getAdvancementProgress(advancement)
             progress.remainingCriteria.forEach(progress::awardCriteria)
         }

@@ -15,9 +15,9 @@ class TeamAdvancementEvent(private val advancement: Advancement) : TournamentEve
         var handler: ((TeamAdvancement) -> Unit)? = { event ->
             if (event.advancement == advancement) backingEvent.invoke(event)
         }
-        tournament.advancementHandler.teamAdvancementEvent.subscribe(handler!!)
+        tournament.teamAdvancementEvent.subscribe(handler!!)
         return TournamentEventInstance(tournament, backingEvent) {
-            handler?.let { tournament.advancementHandler.teamAdvancementEvent.unsubscribe(it) }
+            handler?.let { tournament.teamAdvancementEvent.unsubscribe(it) }
             handler = null
         }
     }

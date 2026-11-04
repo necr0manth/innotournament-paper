@@ -98,7 +98,10 @@ object InnoTournamentEventHandlers {
             val scores = rawScores.map { it.toDouble().also { number -> require(number.isFinite()) } }
             ITournamentEventListener<ISourcePlayerProvider> { tournament, playerProvider ->
                 val player = playerProvider.sourcePlayer ?: return@ITournamentEventListener
-                val team = player.team ?: return@ITournamentEventListener
+                require(tournament.getPlayer(player.pluginPlayer) === player) {
+                    "Tournament player is stale"
+                }
+                val team = player.team
                 // Original Java's scores[lives] throws on an out-of-range index.
                 tournament.addScores(team, scores[player.lives])
             }
