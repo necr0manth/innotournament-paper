@@ -217,7 +217,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                                 return@executes 1
                             }
 
-                            val existingTeam = team(ctx)
+                            val existingTeam = inviter.team
                             val team = if (existingTeam != null) {
                                 existingTeam
                             } else {
@@ -552,7 +552,8 @@ class TeamsCommand(private val teamManager: TeamManager) {
     }
 
     private fun checkTeam(ctx: CommandContext<CommandSourceStack>): PluginTeam? {
-        val team = team(ctx)
+        val player = player(ctx) ?: return null
+        val team = player.team
         if (team == null) {
             ctx.source.sender.sendMessage(Component.text("You're not on the team.", NamedTextColor.RED))
             return null
@@ -561,9 +562,8 @@ class TeamsCommand(private val teamManager: TeamManager) {
     }
 
     private fun checkOwner(ctx: CommandContext<CommandSourceStack>): PluginPlayer? {
-        val team = team(ctx)
-        val player = player(ctx)
-        if (team == null || player == null) return null
+        val player = player(ctx) ?: return null
+        val team = player.team ?: return null
         if (team.owner == player) return player
 
         ctx.source.sender.sendMessage(Component.text("Only team owner can do this", NamedTextColor.RED))
@@ -571,12 +571,12 @@ class TeamsCommand(private val teamManager: TeamManager) {
     }
 
     private fun player(ctx: CommandContext<CommandSourceStack>): PluginPlayer? {
-        val player = ctx.source.executor as? Player ?: return null
-        return PluginPlayer.get(player)
-    }
-
-    private fun team(ctx: CommandContext<CommandSourceStack>): PluginTeam? {
-        return player(ctx)?.team
+        val sender = ctx.source.sender
+        if (sender !is Player) {
+            sender.sendMessage(Component.text("This command requires a player", NamedTextColor.RED))
+            return null
+        }
+        return PluginPlayer.get(sender)
     }
 
     private fun updateSidebars() {
