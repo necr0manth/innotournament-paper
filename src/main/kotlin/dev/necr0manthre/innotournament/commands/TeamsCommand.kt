@@ -420,6 +420,39 @@ class TeamsCommand(private val teamManager: TeamManager) {
         )
 
         registerer.add(
+            Commands.literal("remove")
+                .executes { ctx ->
+                    val player = player(ctx) ?: return@executes 0
+                    val team = player.team
+                    if (team == null) {
+                        ctx.source.sender.sendMessage(
+                            Component.text("You're not on the team.", NamedTextColor.RED)
+                        )
+                        return@executes 0
+                    }
+                    if (team.owner !== player) {
+                        ctx.source.sender.sendMessage(
+                            Component.text("Only team owner can do this", NamedTextColor.RED)
+                        )
+                        return@executes 0
+                    }
+
+                    if (!teamManager.removeTeamFromCommand(team)) {
+                        ctx.source.sender.sendMessage(
+                            Component.text("Unable to remove team", NamedTextColor.RED)
+                        )
+                        return@executes 0
+                    }
+
+                    ctx.source.sender.sendMessage(
+                        Component.text("Removed team ").append(team.displayName)
+                    )
+                    updateSidebars()
+                    Command.SINGLE_SUCCESS
+                }
+        )
+
+        registerer.add(
             Commands.literal("removeAll")
                 .requires { source -> source.sender.hasPermission("minecraft.command.team") }
                 .executes { ctx ->
