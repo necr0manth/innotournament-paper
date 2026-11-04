@@ -6,7 +6,7 @@ class MultiArgumentParser<T>(private val name: String?, private val factory: (Ar
     IParser<String, T> {
     override fun tryParse(str: String): T? {
         val str = str.trim()
-        val args = str.substringAfter("$name ")
+        val args = str.removePrefix("$name ")
         if (args == str)
             return null
         return factory(args.split(" ").dropLastWhile { it.isEmpty() }.toTypedArray())

@@ -27,8 +27,8 @@ class Tournament(
     var startBoxStructureResourceLocation: NamespacedKey?,
     var startBoxPos: Location,
     private val preStartGameMode: GameMode,
-    private val preStartEvents: Map<TournamentEvent<*>, List<ITournamentEventListener<*>>>,
-    private val mainEvents: Map<TournamentEvent<*>, List<ITournamentEventListener<*>>>,
+    private val preStartEvents: EventPlan,
+    private val mainEvents: EventPlan,
     var teamScoreModifiers: DoubleArray,
     val lastTeamScore: Float
 ) {
@@ -347,12 +347,11 @@ class Tournament(
     }
 
     private fun subscribeAll(
-        events: Map<TournamentEvent<*>, List<ITournamentEventListener<*>>>,
+        events: EventPlan,
         instances: MutableSet<TournamentEventInstance<*>>
     ) {
-        events.forEach { (event, listeners) ->
-            val instance = event.subscribe(this)
-            listeners.forEach { instance.addWildcardListener(it) }
+        for (entry in events.entries) {
+            val instance = entry.subscribe(this)
             instances.add(instance)
         }
     }
