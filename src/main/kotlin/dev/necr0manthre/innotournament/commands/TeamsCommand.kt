@@ -377,6 +377,49 @@ class TeamsCommand(private val teamManager: TeamManager) {
         )
 
         registerer.add(
+            Commands.literal("owner")
+                .then(
+                    Commands.argument<String>("player", StringArgumentType.word())
+                        .suggestPlayers()
+                        .executes { ctx ->
+                            val team = checkTeam(ctx) ?: return@executes 0
+                            val owner = checkOwner(ctx) ?: return@executes 0
+                            val target = getTargetPlayer(ctx) ?: return@executes 0
+
+                            if (target.team !== team) {
+                                ctx.source.sender.sendMessage(
+                                    Component.text("That player is not on your team", NamedTextColor.RED)
+                                )
+                                return@executes 0
+                            }
+                            val alreadyOwner = target === owner
+                            if (!team.transferOwnership(target)) {
+                                ctx.source.sender.sendMessage(
+                                    Component.text("Ownership transfer was cancelled", NamedTextColor.RED)
+                                )
+                                return@executes 0
+                            }
+                            if (alreadyOwner) {
+                                ctx.source.sender.sendMessage(Component.text("That player is already the team owner"))
+                                return@executes Command.SINGLE_SUCCESS
+                            }
+
+                            ctx.source.sender.sendMessage(
+                                Component.text("You transferred ownership of team ")
+                                    .append(team.displayName)
+                                    .append(Component.text(" to "))
+                                    .append(target.displayName)
+                            )
+                            target.player?.sendMessage(
+                                Component.text("You are now owner of team ").append(team.displayName)
+                            )
+                            updateSidebars()
+                            Command.SINGLE_SUCCESS
+                        }
+                )
+        )
+
+        registerer.add(
             Commands.literal("removeAll")
                 .requires { source -> source.sender.hasPermission("minecraft.command.team") }
                 .executes { ctx ->
