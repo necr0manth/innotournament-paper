@@ -95,11 +95,24 @@ class TournamentConfigCodecTest {
             val error = assertThrows(TournamentConfigException::class.java) {
                 codec.decode(json.toString())
             }
-            assertFalse(error.message.isNullOrBlank(), field)
+            val message = error.message.orEmpty()
+            assertTrue(message.contains(field), "Missing field '$field' from: $message")
+            assertTrue(message.substringAfter(field).trim().trimStart(':').isNotBlank(), "Missing value reason: $message")
         }
+        assertDiagnostic("tournamentPreSpawn", "[1,2]", "Expected exactly 3 coordinates")
+        assertDiagnostic("tournamentPreSpawn", "[1,2.5,3]", "Expected a 32-bit integer")
+        assertDiagnostic("preEventsPath", "8", "Not a string")
+        assertDiagnostic("lastTeamScore", "true", "Not a number")
         assertThrows(TournamentConfigException::class.java) { codec.decode("[]") }
         assertThrows(TournamentConfigException::class.java) { codec.decode("{broken") }
         assertThrows(TournamentConfigException::class.java) { codec.decode(original + " {}") }
+    }
+
+    private fun assertDiagnostic(field: String, value: String, reason: String) {
+        val json = sample().apply { add(field, JsonParser.parseString(value)) }
+        val error = assertThrows(TournamentConfigException::class.java) { codec.decode(json.toString()) }
+        assertTrue(error.message.orEmpty().contains(field), "Missing field '$field' from: ${error.message}")
+        assertTrue(error.message.orEmpty().contains(reason), "Missing reason '$reason' from: ${error.message}")
     }
 
     @Test fun coordinateBoundsRoundTripWithoutOverflow() {

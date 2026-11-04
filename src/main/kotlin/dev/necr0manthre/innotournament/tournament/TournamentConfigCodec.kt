@@ -2,6 +2,7 @@ package dev.necr0manthre.innotournament.tournament
 
 import com.google.gson.JsonParseException
 import com.google.gson.JsonParser
+import com.mojang.datafixers.util.Pair
 import com.mojang.serialization.Codec
 import com.mojang.serialization.DataResult
 import com.mojang.serialization.DynamicOps
@@ -35,6 +36,15 @@ class TournamentConfigCodec {
     private fun configError(message: String) = TournamentConfigException("settings: $message")
 
     private companion object {
+        private fun <T> field(name: String, codec: Codec<T>): Codec<T> =
+            codec.mapResult(object : Codec.ResultFunction<T> {
+                override fun <O> apply(ops: DynamicOps<O>, input: O, result: DataResult<Pair<T, O>>) =
+                    result.mapError { "$name: $it" }
+
+                override fun <O> coApply(ops: DynamicOps<O>, input: T, result: DataResult<O>) =
+                    result.mapError { "$name: $it" }
+            })
+
         // Codec.INT/BlockPos.CODEC truncate fractions and overflow; validate before converting.
         val COORDINATE: Codec<Int> = object : PrimitiveCodec<Int> {
             override fun <T> read(ops: DynamicOps<T>, input: T): DataResult<Int> =
@@ -52,9 +62,12 @@ class TournamentConfigCodec {
         }
 
         val POSITION: Codec<BlockPosition> = Codec.withAlternative(
-            COORDINATE.listOf(3, 3).xmap(
-                { BlockPosition(it[0], it[1], it[2]) },
-                { listOf(it.x, it.y, it.z) }
+            COORDINATE.listOf().flatXmap(
+                { coordinates ->
+                    if (coordinates.size == 3) DataResult.success(BlockPosition(coordinates[0], coordinates[1], coordinates[2]))
+                    else DataResult.error { "Expected exactly 3 coordinates, found ${coordinates.size}" }
+                },
+                { position -> DataResult.success(listOf(position.x, position.y, position.z)) }
             ),
             RecordCodecBuilder.create { instance ->
                 instance.group(
@@ -86,17 +99,17 @@ class TournamentConfigCodec {
         }
         val CODEC: Codec<TournamentSettings> = RecordCodecBuilder.create { instance ->
             instance.group(
-                POSITION.fieldOf("tournamentPreSpawn").forGetter(TournamentSettings::tournamentPreSpawn),
-                KEY.fieldOf("tournamentPreSpawnDimension").forGetter(TournamentSettings::tournamentPreSpawnDimension),
-                POSITION.fieldOf("tournamentSpawn").forGetter(TournamentSettings::tournamentSpawn),
-                KEY.fieldOf("tournamentSpawnDimension").forGetter(TournamentSettings::tournamentSpawnDimension),
-                KEY.fieldOf("startBoxStructureResourceLocation").forGetter(TournamentSettings::startBoxStructureResourceLocation),
-                POSITION.fieldOf("startBoxPos").forGetter(TournamentSettings::startBoxPos),
-                GAME_MODE.fieldOf("preStartGameMode").forGetter(TournamentSettings::preStartGameMode),
-                PATH.fieldOf("preEventsPath").forGetter(TournamentSettings::preEventsPath),
-                PATH.fieldOf("mainEventsPath").forGetter(TournamentSettings::mainEventsPath),
-                SCORE_MODIFIER.listOf().fieldOf("teamScoreModifiers").forGetter(TournamentSettings::teamScoreModifiers),
-                LAST_SCORE.fieldOf("lastTeamScore").forGetter(TournamentSettings::lastTeamScore)
+                field("tournamentPreSpawn", POSITION).fieldOf("tournamentPreSpawn").forGetter(TournamentSettings::tournamentPreSpawn),
+                field("tournamentPreSpawnDimension", KEY).fieldOf("tournamentPreSpawnDimension").forGetter(TournamentSettings::tournamentPreSpawnDimension),
+                field("tournamentSpawn", POSITION).fieldOf("tournamentSpawn").forGetter(TournamentSettings::tournamentSpawn),
+                field("tournamentSpawnDimension", KEY).fieldOf("tournamentSpawnDimension").forGetter(TournamentSettings::tournamentSpawnDimension),
+                field("startBoxStructureResourceLocation", KEY).fieldOf("startBoxStructureResourceLocation").forGetter(TournamentSettings::startBoxStructureResourceLocation),
+                field("startBoxPos", POSITION).fieldOf("startBoxPos").forGetter(TournamentSettings::startBoxPos),
+                field("preStartGameMode", GAME_MODE).fieldOf("preStartGameMode").forGetter(TournamentSettings::preStartGameMode),
+                field("preEventsPath", PATH).fieldOf("preEventsPath").forGetter(TournamentSettings::preEventsPath),
+                field("mainEventsPath", PATH).fieldOf("mainEventsPath").forGetter(TournamentSettings::mainEventsPath),
+                field("teamScoreModifiers", SCORE_MODIFIER.listOf()).fieldOf("teamScoreModifiers").forGetter(TournamentSettings::teamScoreModifiers),
+                field("lastTeamScore", LAST_SCORE).fieldOf("lastTeamScore").forGetter(TournamentSettings::lastTeamScore)
             ).apply(instance, ::TournamentSettings)
         }
     }
