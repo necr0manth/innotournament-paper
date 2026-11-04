@@ -278,9 +278,8 @@ class Tournament(
         // Scoreboard/sidebar presentation is intentionally separate from team ownership.
     }
 
-    fun remove() {
-        println("$this is being removed")
-        onRemoveEvent.invoke(Unit)
+    fun remove(reason: RemovalReason = RemovalReason.CANCELLED) {
+        if (phase == TournamentPhase.REMOVED) return
         removeEvents(preStartEventInstances)
         removeEvents(mainEventInstances)
         advancementHandler.unregister()
@@ -288,8 +287,8 @@ class Tournament(
         listener = null
         unregisterTeamEventListeners()
         clearParticipationState()
-        phase = TournamentPhase.ENDED
-        println("$this is removed")
+        phase = TournamentPhase.REMOVED
+        onRemoveEvent.invoke(Unit)
     }
 
     fun placeStartBox() {
