@@ -3,6 +3,7 @@ package dev.necr0manthre.innotournament.tournament.events
 import dev.necr0manthre.innotournament.tournament.Tournament
 
 class LambdaTournamentEvent<T, V>(
+    override val valueType: ValueType<T>,
     private val subscribeAction: (Tournament, (T) -> Unit) -> V,
     private val unsubscribeAction: (Tournament, (T) -> Unit, V) -> Unit
 ) : TournamentEvent<T> {

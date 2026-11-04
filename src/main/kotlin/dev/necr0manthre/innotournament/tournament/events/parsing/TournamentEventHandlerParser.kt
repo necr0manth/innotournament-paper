@@ -1,12 +1,8 @@
 package dev.necr0manthre.innotournament.tournament.events.parsing
 
-import dev.necr0manthre.innotournament.tournament.events.ITournamentEventListener
+import dev.necr0manthre.innotournament.tournament.events.ParsedListener
 
 object TournamentEventHandlerParser {
-    fun parse(data: Any): ITournamentEventListener<*>? {
-        return IParser.parse(
-            TournamentEventHandlerParserRegistry,
-            data
-        )
-    }
+    fun parse(expression: String): ParsedListener<*>? =
+        TournamentEventHandlerParserRegistry.parse(expression)
 }
