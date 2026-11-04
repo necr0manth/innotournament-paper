@@ -22,13 +22,13 @@ object TournamentLiveSidebarBuilder {
     }
 
     class Team(
-        val displayName: String,
+        val displayName: Component,
         roster: List<RosterMember>
     ) {
         val roster: List<RosterMember> = immutableCopy(roster)
     }
 
-    data class RosterMember(val displayName: String)
+    data class RosterMember(val displayName: Component)
 
     sealed interface Participation {
         class Confirmed(
@@ -63,8 +63,8 @@ object TournamentLiveSidebarBuilder {
         if (team == null) {
             lines += Component.text("Вы без команды", NamedTextColor.YELLOW)
         } else {
-            lines += Component.text("Команда: ${team.displayName}", NamedTextColor.YELLOW)
-            lines += rosterLines(team.roster.map(RosterMember::displayName))
+            lines += Component.text("Команда: ", NamedTextColor.YELLOW).append(team.displayName)
+            lines += preparedRosterLines(team.roster.map(RosterMember::displayName))
         }
         return sidebar(lines)
     }
@@ -117,6 +117,15 @@ object TournamentLiveSidebarBuilder {
             names
         }
         return visible.map { Component.text(it) }
+    }
+
+    private fun preparedRosterLines(names: List<Component>): List<Component> {
+        val visible = if (names.size > ROSTER_LINE_LIMIT) {
+            names.take(ROSTER_LINE_LIMIT - 1) + Component.text("ещё ${names.size - (ROSTER_LINE_LIMIT - 1)}")
+        } else {
+            names
+        }
+        return visible
     }
 
     private fun sidebar(lines: List<Component>) = Sidebar(

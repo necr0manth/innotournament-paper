@@ -1,5 +1,6 @@
 package dev.necr0manthre.innotournament.tournament
 
+import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -17,8 +18,8 @@ class TournamentLiveSidebarBuilderTest {
         val sidebar = TournamentLiveSidebarBuilder.prepared(
             TournamentLiveSidebarBuilder.PreparedSnapshot(
                 TournamentLiveSidebarBuilder.Team(
-                    "Blue",
-                    (1..7).map { TournamentLiveSidebarBuilder.RosterMember("Player $it") }
+                    Component.text("Blue"),
+                    (1..7).map { TournamentLiveSidebarBuilder.RosterMember(Component.text("Player $it")) }
                 )
             )
         )
@@ -105,12 +106,12 @@ class TournamentLiveSidebarBuilderTest {
 
     @Test
     fun snapshotsCopyAndExposeUnmodifiableRosterAndRankingLists() {
-        val preparedRoster = ArrayList(listOf(TournamentLiveSidebarBuilder.RosterMember("Before")))
-        val team = TournamentLiveSidebarBuilder.Team("Blue", preparedRoster)
-        preparedRoster += TournamentLiveSidebarBuilder.RosterMember("After")
-        assertEquals(listOf("Before"), team.roster.map { it.displayName })
+        val preparedRoster = ArrayList(listOf(TournamentLiveSidebarBuilder.RosterMember(Component.text("Before"))))
+        val team = TournamentLiveSidebarBuilder.Team(Component.text("Blue"), preparedRoster)
+        preparedRoster += TournamentLiveSidebarBuilder.RosterMember(Component.text("After"))
+        assertEquals(listOf(Component.text("Before")), team.roster.map { it.displayName })
         assertThrows(UnsupportedOperationException::class.java) {
-            (team.roster as MutableList).add(TournamentLiveSidebarBuilder.RosterMember("Nope"))
+            (team.roster as MutableList).add(TournamentLiveSidebarBuilder.RosterMember(Component.text("Nope")))
         }
 
         val participantRoster = ArrayList(listOf(TournamentLiveSidebarBuilder.Participant("Before", 1, true)))
