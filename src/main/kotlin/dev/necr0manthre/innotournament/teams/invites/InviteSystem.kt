@@ -75,6 +75,17 @@ class InviteSystem(private val teamManager: TeamManager) : AutoCloseable {
 
     fun rejectInvite(player: PluginPlayer, team: PluginTeam): Boolean = revokeInvite(player, team)
 
+    /** Admission and consumption surround the ordinary structural operation, never replace it. */
+    fun requestJoin(player: PluginPlayer, team: PluginTeam): Boolean {
+        check(!closed) { "Invitation system is closed" }
+        if (!active(team) || player.team === team) return false
+        val invite = getInvite(player, team)
+        if (!team.acceptAll && invite == null) return false
+        if (!team.tryAddPlayerToTeam(player).isSuccess) return false
+        invite?.let(::remove)
+        return true
+    }
+
     fun tick() {
         check(!closed) { "Invitation system is closed" }
         currentTick = Math.addExact(currentTick, 1L)
