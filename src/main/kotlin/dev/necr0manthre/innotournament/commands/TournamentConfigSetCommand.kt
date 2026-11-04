@@ -3,6 +3,7 @@ package dev.necr0manthre.innotournament.commands
 import com.mojang.brigadier.Command
 import com.mojang.brigadier.builder.LiteralArgumentBuilder
 import com.mojang.brigadier.context.CommandContext
+import net.minecraft.commands.SharedSuggestionProvider
 import dev.necr0manthre.innotournament.tournament.BlockPosition
 import dev.necr0manthre.innotournament.tournament.TournamentConfigEdit
 import dev.necr0manthre.innotournament.tournament.TournamentConfigEditor
@@ -35,8 +36,7 @@ object TournamentConfigSetCommand {
                     .then(
                         Commands.argument<NamespacedKey>("template", ArgumentTypes.namespacedKey())
                             .suggests { _, builder ->
-                                structureTemplates().forEach { builder.suggest(it.toString()) }
-                                builder.buildFuture()
+                                SharedSuggestionProvider.suggestResource(structureTemplates(), builder)
                             }
                             .executes { context ->
                                 apply(
@@ -102,8 +102,6 @@ object TournamentConfigSetCommand {
         return Command.SINGLE_SUCCESS
     }
 
-    private fun structureTemplates(): List<NamespacedKey> =
-        (Bukkit.getServer() as CraftServer).server.structureManager.listTemplates().iterator().asSequence()
-            .mapNotNull { NamespacedKey.fromString(it.toString()) }
-            .toList()
+    private fun structureTemplates() =
+        (Bukkit.getServer() as CraftServer).server.structureManager.listTemplates().iterator().asSequence().toList()
 }
