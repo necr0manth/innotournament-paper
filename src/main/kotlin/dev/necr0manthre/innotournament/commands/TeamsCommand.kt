@@ -30,7 +30,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
     ) {
         val registerer = CommandRegisterer(registrar, "teams", "p")
 
-        registerer.register(
+        registerer.add(
             Commands.literal("leave")
                 .executes { ctx ->
                     val player = player(ctx) ?: return@executes 1
@@ -61,7 +61,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                 }
         )
 
-        registerer.register(
+        registerer.add(
             Commands.literal("myTeam")
                 .executes { ctx ->
                     val player = player(ctx) ?: return@executes 1
@@ -71,7 +71,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                 }
         )
 
-        registerer.register(
+        registerer.add(
             Commands.literal("join")
                 .then(
                     Commands.argument<String>("team", StringArgumentType.greedyString())
@@ -111,7 +111,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                 )
         )
 
-        registerer.register(
+        registerer.add(
             Commands.literal("create")
                 .then(
                     Commands.argument("displayName", ArgumentTypes.component())
@@ -151,7 +151,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                 )
         )
 
-        registerer.register(
+        registerer.add(
             Commands.literal("list")
                 .executes { ctx -> executeListTeams(ctx.source) }
                 .then(
@@ -166,7 +166,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                 )
         )
 
-        registerer.register(
+        registerer.add(
             Commands.literal("reject")
                 .then(
                     Commands.argument("player", ArgumentTypes.player())
@@ -200,7 +200,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                 )
         )
 
-        registerer.register(
+        registerer.add(
             Commands.literal("invite")
                 .then(
                     Commands.argument("player", ArgumentTypes.player())
@@ -249,7 +249,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                 )
         )
 
-        registerer.register(
+        registerer.add(
             Commands.literal("tryLeave")
                 .executes { ctx ->
                     if (checkTeam(ctx) == null) return@executes 1
@@ -265,7 +265,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                 }
         )
 
-        registerer.register(
+        registerer.add(
             Commands.literal("tryKick")
                 .then(
                     Commands.argument("player", ArgumentTypes.player())
@@ -294,7 +294,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                 )
         )
 
-        registerer.register(
+        registerer.add(
             Commands.literal("edit")
                 .then(
                     Commands.literal("name")
@@ -319,7 +319,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                 )
         )
 
-        registerer.register(
+        registerer.add(
             Commands.literal("acceptAll")
                 .then(
                     Commands.argument<Boolean>("acceptAll", BoolArgumentType.bool())
@@ -336,7 +336,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                 )
         )
 
-        registerer.register(
+        registerer.add(
             Commands.literal("kick")
                 .then(
                     Commands.argument("player", ArgumentTypes.player())
@@ -372,7 +372,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                 )
         )
 
-        registerer.register(
+        registerer.add(
             Commands.literal("removeAll")
                 .requires { source -> source.sender.hasPermission("minecraft.command.team") }
                 .executes { ctx ->
@@ -381,6 +381,8 @@ class TeamsCommand(private val teamManager: TeamManager) {
                     Command.SINGLE_SUCCESS
                 }
         )
+
+        registerer.register()
     }
 
     private fun myTeamMessage(player: PluginPlayer, team: PluginTeam): Component {

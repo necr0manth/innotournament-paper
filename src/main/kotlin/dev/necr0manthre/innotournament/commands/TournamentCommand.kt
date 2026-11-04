@@ -23,7 +23,7 @@ class TournamentCommand(private val teamManager: TeamManager) {
     fun register(registrar: Commands) {
         val registerer = CommandRegisterer(registrar, "tournament")
 
-        registerer.register(
+        registerer.add(
             Commands.literal("help")
                 .executes { ctx ->
                     ctx.source.sender.sendMessage(
@@ -37,7 +37,7 @@ class TournamentCommand(private val teamManager: TeamManager) {
                 }
         )
 
-        registerer.register(
+        registerer.add(
             Commands.literal("select")
                 .requires { it.sender.hasPermission("minecraft.command.function") }
                 .then(
@@ -58,7 +58,7 @@ class TournamentCommand(private val teamManager: TeamManager) {
                 )
         )
 
-        registerer.register(
+        registerer.add(
             Commands.literal("prepare")
                 .requires { it.sender.hasPermission("minecraft.command.function") }
                 .executes { ctx ->
@@ -75,7 +75,7 @@ class TournamentCommand(private val teamManager: TeamManager) {
                 }
         )
 
-        registerer.register(
+        registerer.add(
             Commands.literal("start")
                 .requires { it.sender.hasPermission("minecraft.command.function") }
                 .executes { ctx ->
@@ -93,7 +93,7 @@ class TournamentCommand(private val teamManager: TeamManager) {
                 }
         )
 
-        registerer.register(
+        registerer.add(
             Commands.literal("stop")
                 .requires { it.sender.hasPermission("minecraft.command.function") }
                 .executes {
@@ -101,6 +101,8 @@ class TournamentCommand(private val teamManager: TeamManager) {
                     Command.SINGLE_SUCCESS
                 }
         )
+
+        registerer.register()
     }
 
     private fun ensureTournament(ctx: com.mojang.brigadier.context.CommandContext<CommandSourceStack>): Tournament? {
