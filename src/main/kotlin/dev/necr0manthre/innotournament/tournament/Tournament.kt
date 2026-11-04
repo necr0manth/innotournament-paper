@@ -8,10 +8,17 @@ import dev.necr0manthre.innotournament.teams.events.TeamChange
 import dev.necr0manthre.innotournament.tournament.events.*
 import org.bukkit.*
 import org.bukkit.advancement.Advancement
+import org.bukkit.entity.AreaEffectCloud
 import org.bukkit.entity.Player
+import org.bukkit.entity.Projectile
+import org.bukkit.entity.TNTPrimed
+import org.bukkit.entity.Tameable
 import org.bukkit.event.EventHandler
 import org.bukkit.event.HandlerList
 import org.bukkit.event.Listener
+import org.bukkit.event.entity.AreaEffectCloudApplyEvent
+import org.bukkit.event.entity.EntityDamageEvent
+import org.bukkit.event.entity.PotionSplashEvent
 import org.bukkit.event.entity.PlayerDeathEvent
 import org.bukkit.event.player.PlayerAdvancementDoneEvent
 import org.bukkit.event.player.PlayerRespawnEvent
@@ -633,6 +640,68 @@ class Tournament(
         player.setLives(player.lives - 1)
     }
 
+    private fun handleOutgoingDamage(event: EntityDamageEvent) {
+        if (phase != TournamentPhase.STARTED || event.entity !is Player) return
+
+        val source = event.damageSource
+        val attackerId = playerSourceId(source.causingEntity)
+            ?: playerSourceId(source.directEntity)
+            ?: (event as? org.bukkit.event.entity.EntityDamageByEntityEvent)?.let { playerSourceId(it.damager) }
+            ?: return
+        if (attackerId == event.entity.uniqueId) return
+
+        val attacker = getPlayer(PluginPlayer.get(attackerId)) ?: return
+        if (!attacker.prepared || getTeam(attacker.team.pluginTeam) !== attacker.team) return
+        if (attacker.lives == 0) event.isCancelled = true
+    }
+
+    private fun playerSourceId(entity: org.bukkit.entity.Entity?): UUID? = when (entity) {
+        is Player -> entity.uniqueId
+        is Projectile -> (entity.shooter as? Player)?.uniqueId ?: entity.ownerUniqueId
+        is TNTPrimed -> playerSourceId(entity.source)
+        is AreaEffectCloud -> (entity.source as? Player)?.uniqueId ?: entity.ownerUniqueId
+        is Tameable -> entity.ownerUniqueId
+        else -> null
+    }
+
+    private fun zeroLifeParticipantId(entity: org.bukkit.entity.Entity?): UUID? {
+        if (phase != TournamentPhase.STARTED) return null
+        val playerId = playerSourceId(entity) ?: return null
+        val participant = getPlayer(PluginPlayer.get(playerId)) ?: return null
+        if (!participant.prepared || getTeam(participant.team.pluginTeam) !== participant.team || participant.lives != 0)
+            return null
+        return playerId
+    }
+
+    private fun handlePoisonSplash(event: PotionSplashEvent) {
+        if (event.potion.effects.none { it.type == PotionEffectType.POISON }) return
+        val blockedIds = blockedPoisonTargetIds(event.potion, event.affectedEntities)
+        event.affectedEntities.filterIsInstance<Player>()
+            .filter { it.uniqueId in blockedIds }
+            .forEach { event.setIntensity(it, 0.0) }
+    }
+
+    private fun handlePoisonCloud(event: AreaEffectCloudApplyEvent) {
+        val cloud = event.entity
+        val appliesPoison = cloud.basePotionType?.potionEffects?.any { it.type == PotionEffectType.POISON } == true ||
+            cloud.customEffects.any { it.type == PotionEffectType.POISON }
+        if (!appliesPoison) return
+        val blockedIds = blockedPoisonTargetIds(cloud, event.affectedEntities)
+        event.affectedEntities.removeAll { it is Player && it.uniqueId in blockedIds }
+    }
+
+    private fun blockedPoisonTargetIds(
+        source: org.bukkit.entity.Entity?,
+        targets: Iterable<org.bukkit.entity.LivingEntity>
+    ): Set<UUID> {
+        val sourceId = zeroLifeParticipantId(source) ?: return emptySet()
+        return targets.filterIsInstance<Player>()
+            .asSequence()
+            .map { it.uniqueId }
+            .filter { it != sourceId }
+            .toSet()
+    }
+
     private fun registerListener() {
         if (listener != null) return
         val owned = object : Listener {
@@ -644,6 +713,21 @@ class Tournament(
             @EventHandler
             fun onDeath(event: PlayerDeathEvent) {
                 handlePlayerDeath(PluginPlayer.get(event.entity))
+            }
+
+            @EventHandler
+            fun onEntityDamage(event: EntityDamageEvent) {
+                handleOutgoingDamage(event)
+            }
+
+            @EventHandler
+            fun onPotionSplash(event: PotionSplashEvent) {
+                handlePoisonSplash(event)
+            }
+
+            @EventHandler
+            fun onAreaEffectCloudApply(event: AreaEffectCloudApplyEvent) {
+                handlePoisonCloud(event)
             }
 
             @EventHandler
