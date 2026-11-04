@@ -85,6 +85,7 @@ class InviteSystemTest {
         assertFalse(pending.isValid)
         assertNull(f.system.getInvite(other, f.team))
         assertTrue(other.invites.invites.isEmpty())
+        assertFalse(f.system.requestJoin(other, f.team))
     }
 
     @Test fun `removed team is invalid even if earlier removal subscriber interrupts cleanup`() {
@@ -98,6 +99,7 @@ class InviteSystemTest {
             assertThrows(IllegalStateException::class.java) { manager.removeTeam(team) }
             assertFalse(invite.isValid)
             assertTrue(player.invites.invites.isEmpty())
+            assertFalse(system.requestJoin(player, team))
             val replacement = (manager.createNewTeam(owner, "same", Component.text("Same")) as TeamCreateResult.Created).team
             assertNull(system.getInvite(player, replacement))
         }
@@ -127,6 +129,54 @@ class InviteSystemTest {
         assertFalse(invite.isValid)
         assertTrue(f.team.invites.invites.isEmpty() && f.player.invites.invites.isEmpty())
         assertThrows(IllegalStateException::class.java) { f.system.invitePlayerToTeam(f.player, f.team, 10) }
+        assertThrows(IllegalStateException::class.java) { f.system.requestJoin(f.player, f.team) }
     }
 
+    @Test fun `admission rejects closed team and veto preserves invite then success consumes it`() = Fixture().use { f ->
+        assertFalse(f.system.requestJoin(f.player, f.team))
+        assertNull(f.player.team)
+        val invite = f.system.invitePlayerToTeam(f.player, f.team, 10)!!
+        val veto: (PlayerTeamEvent) -> Unit = { it.canceled = true }
+        f.manager.beforeJoin.subscribe(veto)
+        assertFalse(f.system.requestJoin(f.player, f.team))
+        assertTrue(invite.isValid)
+        f.manager.beforeJoin.unsubscribe(veto)
+        assertTrue(f.system.requestJoin(f.player, f.team))
+        assertSame(f.team, f.player.team)
+        assertFalse(invite.isValid)
+        assertFalse(f.system.requestJoin(f.player, f.team))
+    }
+
+    @Test fun `open admission consumes own invitation but retains other teams invitation`() = Fixture().use { f ->
+        val otherOwner = PluginPlayer.get(UUID.randomUUID())
+        val other = (f.manager.createNewTeam(otherOwner, "other", Component.text("Other")) as TeamCreateResult.Created).team
+        val retained = f.system.invitePlayerToTeam(f.player, other, 10)!!
+        val consumed = f.system.invitePlayerToTeam(f.player, f.team, 10)!!
+        f.team.acceptAll = true
+        assertTrue(f.system.requestJoin(f.player, f.team))
+        assertFalse(consumed.isValid)
+        assertTrue(retained.isValid)
+        val uninvited = PluginPlayer.get(UUID.randomUUID())
+        assertTrue(f.system.requestJoin(uninvited, f.team))
+    }
+
+    @Test fun `callback replacement is not consumed by earlier join request`() = Fixture().use { f ->
+        val old = f.system.invitePlayerToTeam(f.player, f.team, 10)!!
+        var replacement: Invite? = null
+        f.manager.beforeJoin.subscribe {
+            f.system.revokeInvite(f.player, f.team)
+            replacement = f.system.invitePlayerToTeam(f.player, f.team, 20)
+        }
+        assertTrue(f.system.requestJoin(f.player, f.team))
+        assertFalse(old.isValid)
+        assertSame(replacement, f.system.getInvite(f.player, f.team))
+    }
+
+    @Test fun `throwing afterJoin preserves invitation and already completed membership`() = Fixture().use { f ->
+        val invite = f.system.invitePlayerToTeam(f.player, f.team, 10)!!
+        f.manager.afterJoin.subscribe { throw IllegalStateException("stop") }
+        assertThrows(IllegalStateException::class.java) { f.system.requestJoin(f.player, f.team) }
+        assertSame(f.team, f.player.team)
+        assertTrue(invite.isValid)
+    }
 }
