@@ -58,12 +58,14 @@ class MapPresentationStore(private val path: Path) {
     }
 
     /** Remembers a managed name durably before its first JourneyMap endpoint send. */
-    fun rememberWaypointName(name: String): Boolean {
-        require(name.isNotBlank()) { "Managed waypoint name must not be blank" }
-        if (name in waypointNames) return false
+    fun rememberWaypointName(name: String): Boolean = rememberWaypointNames(listOf(name))
 
+    /** Remembers a batch of names with one durable write before a caller publishes any of them. */
+    fun rememberWaypointNames(names: Collection<String>): Boolean {
+        require(names.all(String::isNotBlank)) { "Managed waypoint names must not be blank" }
         val updated = LinkedHashSet(waypointNames)
-        updated.add(name)
+        updated.addAll(names)
+        if (updated == waypointNames) return false
         save(recordsById, updated)
         waypointNames = updated
         return true

@@ -68,4 +68,16 @@ class MapPresentationStoreTest {
         assertTrue(store.records.isEmpty())
         assertTrue(store.publishedWaypointNames.isEmpty())
     }
+
+    @Test
+    fun `batch waypoint names are persisted together and remain idempotent`() {
+        val path = tempDir.resolve(MapPresentationStore.FILE_NAME)
+        val store = MapPresentationStore(path)
+
+        assertTrue(store.rememberWaypointNames(listOf("generator_one", "generator_two", "generator_one")))
+        assertFalse(store.rememberWaypointNames(listOf("generator_two", "generator_one")))
+        assertEquals(linkedSetOf("generator_one", "generator_two"), MapPresentationStore(path).publishedWaypointNames)
+        assertThrows(IllegalArgumentException::class.java) { store.rememberWaypointNames(listOf("generator_three", " ")) }
+        assertEquals(linkedSetOf("generator_one", "generator_two"), store.publishedWaypointNames)
+    }
 }
