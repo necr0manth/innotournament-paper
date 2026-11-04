@@ -11,7 +11,8 @@ import kotlin.reflect.KClass
 
 abstract class BukkitEventBasedTournamentEvent<T : Event, V>(
     private val eventClass: KClass<T>,
-    private val getHandlerListMethod: () -> HandlerList
+    private val getHandlerListMethod: () -> HandlerList,
+    final override val valueType: ValueType<V>
 ) : TournamentEvent<V> {
     protected fun subscribeBukkit(
         tournament: Tournament,
@@ -24,7 +25,7 @@ abstract class BukkitEventBasedTournamentEvent<T : Event, V>(
                 eventClass.java,
                 subscription!!,
                 EventPriority.LOW,
-                { _, event -> handler(event as T, backingEvent::invoke) },
+                { _, event -> handler(eventClass.java.cast(event), backingEvent::invoke) },
                 Innotournament.instance
             )
         return TournamentEventInstance(tournament, backingEvent) {

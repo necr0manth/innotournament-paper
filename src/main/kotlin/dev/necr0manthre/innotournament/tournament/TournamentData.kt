@@ -5,6 +5,7 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import dev.necr0manthre.innotournament.teams.PluginTeam.TeamManager
 import dev.necr0manthre.innotournament.tournament.events.EventLoader
+import dev.necr0manthre.innotournament.tournament.events.EventPlanStage
 import org.bukkit.Bukkit
 import org.bukkit.GameMode
 import org.bukkit.Location
@@ -33,8 +34,8 @@ class TournamentData(
             startBoxStructureResourceLocation,
             startBoxPos,
             preStartGameMode,
-            EventLoader.loadEvents(parent.resolve(preEventsPath)),
-            EventLoader.loadEvents(parent.resolve(mainEventsPath)),
+            EventLoader.loadEvents(parent.resolve(preEventsPath), EventPlanStage.PRE_START),
+            EventLoader.loadEvents(parent.resolve(mainEventsPath), EventPlanStage.MAIN),
             teamScoreModifiers,
             lastTeamScore
         )

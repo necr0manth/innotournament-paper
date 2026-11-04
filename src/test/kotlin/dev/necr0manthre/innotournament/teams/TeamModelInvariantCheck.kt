@@ -4,6 +4,7 @@ import dev.necr0manthre.innotournament.players.PluginPlayer
 import dev.necr0manthre.innotournament.tournament.Tournament
 import dev.necr0manthre.innotournament.tournament.TournamentTeam
 import dev.necr0manthre.innotournament.tournament.TournamentPhase
+import dev.necr0manthre.innotournament.tournament.events.EventPlan
 import dev.necr0manthre.innotournament.teams.PluginTeam.TeamManager
 import dev.necr0manthre.innotournament.teams.events.PlayerTeamEvent
 import dev.necr0manthre.innotournament.teams.events.TeamChange
@@ -564,7 +565,7 @@ private fun verifyBulkRemovalFrozenSizes(manager: TeamManager) {
 private fun verifyDeletedTeamRanking(manager: TeamManager, activeTeam: PluginTeam, player: PluginPlayer, lastMember: PluginPlayer) {
     val origin = Location(null, 0.0, 0.0, 0.0)
     val tournament = Tournament(manager, origin, origin, null, origin, GameMode.SURVIVAL,
-        emptyMap(), emptyMap(), doubleArrayOf(1.0), 0f)
+        EventPlan.of(emptyList()), EventPlan.of(emptyList()), doubleArrayOf(1.0), 0f)
     val currentRecord = checkNotNull(tournament.getOrCreateTournamentTeam(activeTeam))
     activeTeam.acceptAll = true
     tournament.setupTeam(currentRecord)
