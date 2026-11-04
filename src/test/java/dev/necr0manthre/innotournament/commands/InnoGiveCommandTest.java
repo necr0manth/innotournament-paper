@@ -6,6 +6,7 @@ import org.bukkit.command.CommandSender;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Proxy;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -27,16 +28,16 @@ class InnoGiveCommandTest {
         assertInstanceOf(ArgumentCommandNode.class, count);
         assertNotNull(count.getCommand(), "explicit count should be executable");
 
-        assertFalse(give.getRequirement().test(source(false)));
-        assertTrue(give.getRequirement().test(source(true)));
+        assertFalse(give.getRequirement().test(source(Set.of())));
+        assertFalse(give.getRequirement().test(source(Set.of("minecraft.command.function", "minecraft.command.team"))));
+        assertTrue(give.getRequirement().test(source(Set.of("innotournament.admin"))));
     }
 
-    private static CommandSourceStack source(boolean allowed) {
+    private static CommandSourceStack source(Set<String> allowedPermissions) {
         var sender = (CommandSender) Proxy.newProxyInstance(CommandSender.class.getClassLoader(),
                 new Class<?>[]{CommandSender.class}, (proxy, method, args) -> {
                     if (method.getName().equals("hasPermission")) {
-                        assertEquals("minecraft.command.function", args[0]);
-                        return allowed;
+                        return allowedPermissions.contains(args[0]);
                     }
                     throw new AssertionError("Unexpected sender method: " + method.getName());
                 });
