@@ -4,11 +4,11 @@ import dev.necr0manthre.innotournament.players.PluginPlayer
 import dev.necr0manthre.innotournament.tournament.Tournament
 import dev.necr0manthre.innotournament.tournament.TournamentTeam
 import dev.necr0manthre.innotournament.tournament.TournamentPhase
+import dev.necr0manthre.innotournament.teams.PluginTeam.TeamManager
 import dev.necr0manthre.innotournament.teams.events.PlayerTeamEvent
 import dev.necr0manthre.innotournament.teams.events.TeamChange
 import dev.necr0manthre.innotournament.teams.events.TeamCreated
 import dev.necr0manthre.innotournament.teams.events.TeamRenameChange
-import dev.necr0manthre.innotournament.teams.TeamManager
 import dev.necr0manthre.innotournament.teams.events.TeamOwnerChange
 import dev.necr0manthre.innotournament.teams.events.TeamOwnerTransferEvent
 import dev.necr0manthre.innotournament.teams.events.TeamRenameEvent
@@ -36,7 +36,6 @@ fun main() {
     val manager = TeamManager(TeamsSnapshot(teams = listOf(blue, TeamSnapshot(
         "empty", Component.text("Empty"), true, emptyList(), null
     ))))
-    val teamEvents = manager.events
     val isolatedManager = TeamManager()
     val isolatedPlayer = PluginPlayer.get(UUID(0, 99))
     val isolatedTeam = (isolatedManager.createNewTeam(isolatedPlayer, "blue", Component.text("Other Blue"))
@@ -123,8 +122,8 @@ fun main() {
             creationEvents += "join"
         }
     }
-    teamEvents.afterCreate.subscribe(observedCreate)
-    teamEvents.afterJoin.subscribe(observedJoin)
+    manager.afterCreate.subscribe(observedCreate)
+    manager.afterJoin.subscribe(observedJoin)
     var renameDelivered = false
     val observeRename: (TeamRenameChange) -> Unit = {
         if (it.team === teamA && it.newId == "claimed") {
@@ -137,12 +136,12 @@ fun main() {
             check(teamA.changeTeamName(Component.text("claimed")))
         }
     }
-    teamEvents.afterRename.subscribe(observeRename)
-    teamEvents.beforeJoin.subscribe(claimId)
+    manager.afterRename.subscribe(observeRename)
+    manager.beforeJoin.subscribe(claimId)
     check(manager.createNewTeam(creator, "claimed", Component.text("Claimed")) ===
         TeamCreateResult.ID_ALREADY_EXISTS)
-    teamEvents.beforeJoin.unsubscribe(claimId)
-    teamEvents.afterRename.unsubscribe(observeRename)
+    manager.beforeJoin.unsubscribe(claimId)
+    manager.afterRename.unsubscribe(observeRename)
     check(renameDelivered && manager.getTeamById("claimed") === teamA)
     check(manager.getTeamById("blue") == null)
     check(manager.getAllTeams() == listOf(teamA, teamB))
@@ -156,10 +155,10 @@ fun main() {
     val cancelCreationJoin: (PlayerTeamEvent) -> Unit = {
         if (it.player === creator && it.team.id == "vetoed") it.canceled = true
     }
-    teamEvents.beforeJoin.subscribe(cancelCreationJoin)
+    manager.beforeJoin.subscribe(cancelCreationJoin)
     check(manager.createNewTeam(creator, "vetoed", Component.text("Vetoed")) ===
         TeamCreateResult.CANCELLED)
-    teamEvents.beforeJoin.unsubscribe(cancelCreationJoin)
+    manager.beforeJoin.unsubscribe(cancelCreationJoin)
     check(manager.getTeamById("vetoed") == null && creator.team == null)
     check(manager.getAllTeams() == listOf(teamA, teamB) && creationEvents.isEmpty())
 
@@ -168,8 +167,8 @@ fun main() {
     check(created.team.owner === creator && created.team.players == listOf(creator))
     check(creator.team === created.team && manager.getTeamById("created") === created.team)
     check(creationEvents == listOf("create", "join"))
-    teamEvents.afterCreate.unsubscribe(observedCreate)
-    teamEvents.afterJoin.unsubscribe(observedJoin)
+    manager.afterCreate.unsubscribe(observedCreate)
+    manager.afterJoin.unsubscribe(observedJoin)
     check(manager.removeTeam(created.team))
     check(creator.team == null && manager.getTeamById("created") == null)
     check(manager.getAllTeams() == listOf(teamA, teamB))
@@ -183,11 +182,11 @@ fun main() {
     check(teamA.transferOwnership(c))
 
     val vetoJoin: (PlayerTeamEvent) -> Unit = { if (it.team === teamB) it.canceled = true }
-    teamEvents.beforeJoin.subscribe(vetoJoin)
+    manager.beforeJoin.subscribe(vetoJoin)
     // B's join is cancelled only after A's fully completed leave.
     check(teamB.tryAddPlayerToTeam(c) === PlayerJoinResult.CANCELLED)
     check(c.team == null && teamA.players.isEmpty() && teamB.players.isEmpty())
-    teamEvents.beforeJoin.unsubscribe(vetoJoin)
+    manager.beforeJoin.unsubscribe(vetoJoin)
 
     check(teamA.changeTeamName(Component.text("renamed")))
     check(manager.getTeamById("blue") == null && manager.getTeamById("renamed") === teamA)
@@ -202,9 +201,9 @@ fun main() {
                 .exceptionOrNull() is IllegalStateException)
         }
     }
-    teamEvents.beforeRename.subscribe(guardOnRename)
+    manager.beforeRename.subscribe(guardOnRename)
     check(teamA.changeTeamName(Component.text("renamed again")))
-    teamEvents.beforeRename.unsubscribe(guardOnRename)
+    manager.beforeRename.unsubscribe(guardOnRename)
 
     // Guard only this team's active rename, including otherwise successful no-ops.
     var beforeRenames = 0
@@ -235,11 +234,11 @@ fun main() {
             check(teamB.changeTeamName(Component.text("other after")))
         }
     }
-    teamEvents.beforeRename.subscribe(nestedBeforeRename)
-    teamEvents.afterRename.subscribe(nestedAfterRename)
+    manager.beforeRename.subscribe(nestedBeforeRename)
+    manager.afterRename.subscribe(nestedAfterRename)
     check(teamA.changeTeamName(Component.text("guarded rename")))
-    teamEvents.beforeRename.unsubscribe(nestedBeforeRename)
-    teamEvents.afterRename.unsubscribe(nestedAfterRename)
+    manager.beforeRename.unsubscribe(nestedBeforeRename)
+    manager.afterRename.unsubscribe(nestedAfterRename)
     check(beforeRenames == 1 && afterRenames == 1)
     check(acceptAllGuard is IllegalStateException && acceptAllChangeGuard is IllegalStateException)
     teamA.acceptAll = true
@@ -257,9 +256,9 @@ fun main() {
             check(teamA.changeTeamName(Component.text("rename from B callback")))
         }
     }
-    teamEvents.afterRename.subscribe(renameFromOtherCallback)
+    manager.afterRename.subscribe(renameFromOtherCallback)
     check(teamB.changeTeamName(Component.text("other trigger")))
-    teamEvents.afterRename.unsubscribe(renameFromOtherCallback)
+    manager.afterRename.unsubscribe(renameFromOtherCallback)
     check(crossTeamRenames == 1 && manager.getTeamById("rename from B callback") === teamA)
     check(teamB.changeTeamName(Component.text("empty")))
 
@@ -270,9 +269,9 @@ fun main() {
             it.canceled = true
         }
     }
-    teamEvents.beforeRename.subscribe(vetoRename)
+    manager.beforeRename.subscribe(vetoRename)
     check(!teamA.changeTeamName(Component.text("vetoed rename")))
-    teamEvents.beforeRename.unsubscribe(vetoRename)
+    manager.beforeRename.unsubscribe(vetoRename)
     check(manager.getTeamById("rename from B callback") === teamA)
     check(teamA.changeTeamName(Component.text("after veto")))
 
@@ -283,10 +282,10 @@ fun main() {
             teamA.changeTeamName(Component.text("recursive exception"))
         }
     }
-    teamEvents.beforeRename.subscribe(uncaughtRecursiveRename)
+    manager.beforeRename.subscribe(uncaughtRecursiveRename)
     check(runCatching { teamA.changeTeamName(Component.text("outer exception")) }
         .exceptionOrNull() is IllegalStateException)
-    teamEvents.beforeRename.unsubscribe(uncaughtRecursiveRename)
+    manager.beforeRename.unsubscribe(uncaughtRecursiveRename)
     check(uncaughtRecursiveRenames == 1 && manager.getTeamById("after veto") === teamA)
     check(teamA.changeTeamName(Component.text("after recursive exception")))
 
@@ -294,10 +293,10 @@ fun main() {
     val throwBeforeRename: (TeamRenameEvent) -> Unit = {
         if (it.team === teamA) throw beforeFailure
     }
-    teamEvents.beforeRename.subscribe(throwBeforeRename)
+    manager.beforeRename.subscribe(throwBeforeRename)
     check(runCatching { teamA.changeTeamName(Component.text("uncommitted rename")) }
         .exceptionOrNull() === beforeFailure)
-    teamEvents.beforeRename.unsubscribe(throwBeforeRename)
+    manager.beforeRename.unsubscribe(throwBeforeRename)
     check(manager.getTeamById("after recursive exception") === teamA)
     check(teamA.changeTeamName(Component.text("recovered before")))
 
@@ -309,10 +308,10 @@ fun main() {
             throw afterFailure
         }
     }
-    teamEvents.afterRename.subscribe(throwAfterRename)
+    manager.afterRename.subscribe(throwAfterRename)
     check(runCatching { teamA.changeTeamName(Component.text("committed before failure")) }
         .exceptionOrNull() === afterFailure)
-    teamEvents.afterRename.unsubscribe(throwAfterRename)
+    manager.afterRename.unsubscribe(throwAfterRename)
     check(manager.getTeamById("committed before failure") === teamA)
     check(teamA.changeTeamName(Component.text("recovered after")))
     check(teamA.changeTeamName(teamA.displayName)) // Independent no-op is still allowed.
@@ -341,11 +340,11 @@ fun main() {
             check(runCatching { teamA.transferOwnership(d) }.exceptionOrNull() is IllegalStateException)
         }
     }
-    teamEvents.beforeOwnerTransfer.subscribe(blockNestedTransfer)
-    teamEvents.afterOwnerTransfer.subscribe(observeOwnerTransfer)
+    manager.beforeOwnerTransfer.subscribe(blockNestedTransfer)
+    manager.afterOwnerTransfer.subscribe(observeOwnerTransfer)
     check(teamA.transferOwnership(e) && teamA.owner === e)
-    teamEvents.beforeOwnerTransfer.unsubscribe(blockNestedTransfer)
-    teamEvents.afterOwnerTransfer.unsubscribe(observeOwnerTransfer)
+    manager.beforeOwnerTransfer.unsubscribe(blockNestedTransfer)
+    manager.afterOwnerTransfer.unsubscribe(observeOwnerTransfer)
     check(beforeTransfers == 1 && afterTransfers == 1)
     check(manager.getTeamById("renamed during owner transfer") == null)
 
@@ -356,9 +355,9 @@ fun main() {
             teamA.transferOwnership(d)
         }
     }
-    teamEvents.beforeOwnerTransfer.subscribe(uncaughtNestedTransfer)
+    manager.beforeOwnerTransfer.subscribe(uncaughtNestedTransfer)
     check(runCatching { teamA.transferOwnership(d) }.exceptionOrNull() is IllegalStateException)
-    teamEvents.beforeOwnerTransfer.unsubscribe(uncaughtNestedTransfer)
+    manager.beforeOwnerTransfer.unsubscribe(uncaughtNestedTransfer)
     check(failingTransferCalls == 1 && teamA.owner === e)
     check(teamA.players == listOf(d, e) && c.team == null && d.team === teamA && e.team === teamA)
     // The exception must release the guard for an independent later transfer.
@@ -374,15 +373,15 @@ fun main() {
     val laterListener: (TeamChange) -> Unit = { laterListenerCalled = true }
     var enteredBeforeJoinB = false
     val observeBeforeJoin: (PlayerTeamEvent) -> Unit = { if (it.team === teamB) enteredBeforeJoinB = true }
-    teamEvents.afterLeave.subscribe(forbiddenMove)
-    teamEvents.afterLeave.subscribe(laterListener)
-    teamEvents.beforeJoin.subscribe(observeBeforeJoin)
+    manager.afterLeave.subscribe(forbiddenMove)
+    manager.afterLeave.subscribe(laterListener)
+    manager.beforeJoin.subscribe(observeBeforeJoin)
     check(runCatching { teamB.tryAddPlayerToTeam(d) }.exceptionOrNull() is IllegalStateException)
     check(d.team == null && !teamA.players.contains(d) && !teamB.players.contains(d))
     check(!laterListenerCalled && !enteredBeforeJoinB)
-    teamEvents.afterLeave.unsubscribe(forbiddenMove)
-    teamEvents.afterLeave.unsubscribe(laterListener)
-    teamEvents.beforeJoin.unsubscribe(observeBeforeJoin)
+    manager.afterLeave.unsubscribe(forbiddenMove)
+    manager.afterLeave.unsubscribe(laterListener)
+    manager.beforeJoin.unsubscribe(observeBeforeJoin)
     check(teamB.tryAddPlayerToTeam(d).isSuccess && teamB.owner === d)
 
     val sourceManager = TeamManager()
@@ -468,7 +467,7 @@ fun main() {
     check(destinationManager.removeTeam(destinationTeam) && unrelatedManager.removeTeam(thirdTeam))
 
     val vetoDelete: (PlayerTeamEvent) -> Unit = { if (it.team === teamB) it.canceled = true }
-    teamEvents.beforeLeave.subscribe(vetoDelete)
+    manager.beforeLeave.subscribe(vetoDelete)
     check(!manager.removeTeam(teamB))
     check(d.team === teamB && teamB.players == listOf(d))
     var afterLeave: TeamChange? = null
@@ -480,16 +479,16 @@ fun main() {
         }
     }
     val observeRemove: (PluginTeam) -> Unit = { if (it === teamB) afterRemove = true }
-    teamEvents.afterLeave.subscribe(observeLeave)
-    teamEvents.afterRemove.subscribe(observeRemove)
+    manager.afterLeave.subscribe(observeLeave)
+    manager.afterRemove.subscribe(observeRemove)
     check(manager.removeTeamFromCommand(teamB))
     check(afterLeave == TeamChange(d, teamB, 1, 0) && afterRemove)
     check(teamB.owner == null && teamB.players.isEmpty() && d.team == null)
     check(manager.getTeamById("empty") == null)
     check(teamB.tryAddPlayerToTeam(d) === PlayerJoinResult.TEAM_REMOVED)
-    teamEvents.beforeLeave.unsubscribe(vetoDelete)
-    teamEvents.afterLeave.unsubscribe(observeLeave)
-    teamEvents.afterRemove.unsubscribe(observeRemove)
+    manager.beforeLeave.unsubscribe(vetoDelete)
+    manager.afterLeave.unsubscribe(observeLeave)
+    manager.afterRemove.unsubscribe(observeRemove)
     check(manager.getAllTeams() == listOf(teamA))
     verifyBulkRemovalFrozenSizes(manager)
     verifyDeletedTeamRanking(manager, teamA, d, e)
@@ -498,7 +497,6 @@ fun main() {
 }
 
 private fun verifyBulkRemovalFrozenSizes(manager: TeamManager) {
-    val teamEvents = manager.events
     for ((force, size) in listOf(false to 3, true to 4)) {
         val id = if (force) "bulk-force" else "bulk-ordinary"
         val players = (0 until size).map { PluginPlayer.get(UUID(0, 100L + (if (force) 10 else 0) + it)) }
@@ -535,10 +533,10 @@ private fun verifyBulkRemovalFrozenSizes(manager: TeamManager) {
                 removed = true
             }
         }
-        teamEvents.beforeRemove.subscribe(beforeRemove)
-        teamEvents.beforeLeave.subscribe(beforeLeave)
-        teamEvents.afterLeave.subscribe(afterLeave)
-        teamEvents.afterRemove.subscribe(afterRemove)
+        manager.beforeRemove.subscribe(beforeRemove)
+        manager.beforeLeave.subscribe(beforeLeave)
+        manager.afterLeave.subscribe(afterLeave)
+        manager.afterRemove.subscribe(afterRemove)
         try {
             if (!force) {
                 check(!manager.removeTeam(team)) // Middle leave vetoes the entire delete.
@@ -555,16 +553,15 @@ private fun verifyBulkRemovalFrozenSizes(manager: TeamManager) {
             })
             check(removed && manager.getTeamById(id) == null)
         } finally {
-            teamEvents.beforeRemove.unsubscribe(beforeRemove)
-            teamEvents.beforeLeave.unsubscribe(beforeLeave)
-            teamEvents.afterLeave.unsubscribe(afterLeave)
-            teamEvents.afterRemove.unsubscribe(afterRemove)
+            manager.beforeRemove.unsubscribe(beforeRemove)
+            manager.beforeLeave.unsubscribe(beforeLeave)
+            manager.afterLeave.unsubscribe(afterLeave)
+            manager.afterRemove.unsubscribe(afterRemove)
         }
     }
 }
 
 private fun verifyDeletedTeamRanking(manager: TeamManager, activeTeam: PluginTeam, player: PluginPlayer, lastMember: PluginPlayer) {
-    val teamEvents = manager.events
     val origin = Location(null, 0.0, 0.0, 0.0)
     val tournament = Tournament(manager, origin, origin, null, origin, GameMode.SURVIVAL,
         emptyMap(), emptyMap(), doubleArrayOf(1.0), 0f)
@@ -582,12 +579,12 @@ private fun verifyDeletedTeamRanking(manager: TeamManager, activeTeam: PluginTea
     val setupDuringJoin: (TeamChange) -> Unit = {
         initializeDuringJoin.invoke(tournament, it.team, false)
     }
-    teamEvents.afterJoin.subscribe(setupDuringJoin)
+    manager.afterJoin.subscribe(setupDuringJoin)
     val leadingTeam = try {
         (manager.createNewTeam(player, "leader", Component.text("Leader"))
             as TeamCreateResult.Created).team
     } finally {
-        teamEvents.afterJoin.unsubscribe(setupDuringJoin)
+        manager.afterJoin.unsubscribe(setupDuringJoin)
     }
     check(!leadingTeam.acceptAll && tournament.getTeam(leadingTeam) != null)
     val historicalRecord = checkNotNull(tournament.getOrCreateTournamentTeam(leadingTeam))
@@ -601,7 +598,7 @@ private fun verifyDeletedTeamRanking(manager: TeamManager, activeTeam: PluginTea
     val onlyRemaining = "Tournament ended. Results: 1. $remainingName (25.0)"
 
     val onRemove: (PluginTeam) -> Unit = tournament::onTeamRemoved
-    teamEvents.afterRemove.subscribe(onRemove)
+    manager.afterRemove.subscribe(onRemove)
     try {
         check(tournament.getTopTeams(1) == listOf(historicalRecord))
         check(standings() == "Tournament ended. Results: 1. Leader (100.0), 2. $remainingName (25.0)")
@@ -639,7 +636,7 @@ private fun verifyDeletedTeamRanking(manager: TeamManager, activeTeam: PluginTea
         check(standings() == "Tournament ended") // History exists, no active places.
         check(records.size == 3 && historicalRecord in records)
     } finally {
-        teamEvents.afterRemove.unsubscribe(onRemove)
+        manager.afterRemove.unsubscribe(onRemove)
     }
 }
 

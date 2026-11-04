@@ -4,8 +4,8 @@ import com.destroystokyo.paper.event.server.ServerTickEndEvent
 import dev.necr0manthre.innotournament.Innotournament
 import dev.necr0manthre.innotournament.players.PluginPlayer
 import dev.necr0manthre.innotournament.teams.PluginTeam
+import dev.necr0manthre.innotournament.teams.PluginTeam.TeamManager
 import dev.necr0manthre.innotournament.teams.events.TeamChange
-import dev.necr0manthre.innotournament.teams.TeamManager
 import dev.necr0manthre.innotournament.tournament.events.*
 import net.kyori.adventure.text.Component
 import org.bukkit.*
@@ -450,15 +450,15 @@ class Tournament(
         teamJoinListener = ::onPlayerJoinTeam
         teamLeaveListener = ::onPlayerLeaveTeam
         teamRemoveListener = ::onTeamRemoved
-        teamManager.events.afterJoin.subscribe(teamJoinListener!!)
-        teamManager.events.afterLeave.subscribe(teamLeaveListener!!)
-        teamManager.events.afterRemove.subscribe(teamRemoveListener!!)
+        teamManager.afterJoin.subscribe(teamJoinListener!!)
+        teamManager.afterLeave.subscribe(teamLeaveListener!!)
+        teamManager.afterRemove.subscribe(teamRemoveListener!!)
     }
 
     private fun unregisterTeamEventListeners() {
-        teamJoinListener?.let { teamManager.events.afterJoin.unsubscribe(it) }
-        teamLeaveListener?.let { teamManager.events.afterLeave.unsubscribe(it) }
-        teamRemoveListener?.let { teamManager.events.afterRemove.unsubscribe(it) }
+        teamJoinListener?.let { teamManager.afterJoin.unsubscribe(it) }
+        teamLeaveListener?.let { teamManager.afterLeave.unsubscribe(it) }
+        teamRemoveListener?.let { teamManager.afterRemove.unsubscribe(it) }
         teamJoinListener = null
         teamLeaveListener = null
         teamRemoveListener = null

@@ -7,8 +7,8 @@ import com.mojang.brigadier.builder.RequiredArgumentBuilder
 import com.mojang.brigadier.context.CommandContext
 import dev.necr0manthre.innotournament.players.PluginPlayer
 import dev.necr0manthre.innotournament.teams.PluginTeam
+import dev.necr0manthre.innotournament.teams.PluginTeam.TeamManager
 import dev.necr0manthre.innotournament.teams.TeamCreateResult
-import dev.necr0manthre.innotournament.teams.TeamManager
 import dev.necr0manthre.innotournament.teams.invites.InviteSystem
 import dev.necr0manthre.innotournament.tournament.Tournament
 import dev.necr0manthre.innotournament.util.CommandRegisterer
