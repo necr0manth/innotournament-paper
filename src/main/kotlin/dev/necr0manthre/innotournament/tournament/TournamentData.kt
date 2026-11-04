@@ -3,6 +3,7 @@ package dev.necr0manthre.innotournament.tournament
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import dev.necr0manthre.innotournament.teams.PluginTeam.TeamManager
 import dev.necr0manthre.innotournament.tournament.events.EventLoader
 import org.bukkit.Bukkit
 import org.bukkit.GameMode
@@ -24,9 +25,9 @@ class TournamentData(
     var lastTeamScore: Float = 0f
 ) : Cloneable {
 
-    fun createTournament(tournamentDataPath: Path): Tournament {
+    fun createTournament(tournamentDataPath: Path, teamManager: TeamManager): Tournament {
         val parent = tournamentDataPath.parent ?: Path.of("")
-        return Tournament(
+        return Tournament(teamManager,
             tournamentSpawn,
             tournamentPreSpawn,
             startBoxStructureResourceLocation,
