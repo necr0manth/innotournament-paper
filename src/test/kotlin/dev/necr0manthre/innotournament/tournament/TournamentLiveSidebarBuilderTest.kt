@@ -37,17 +37,17 @@ class TournamentLiveSidebarBuilderTest {
         val snapshot = TournamentLiveSidebarBuilder.StartedSnapshot(
             TournamentLiveSidebarBuilder.Participation.Confirmed(
                 teamId = "viewer-team",
-                teamName = "Blue",
+                teamName = Component.text("Blue"),
                 score = 7.125,
                 roster = listOf(
-                    TournamentLiveSidebarBuilder.Participant("Online zero", lives = 0, online = true),
-                    TournamentLiveSidebarBuilder.Participant("Offline alive", lives = 2, online = false)
+                    TournamentLiveSidebarBuilder.Participant(Component.text("Online zero"), lives = 0, online = true),
+                    TournamentLiveSidebarBuilder.Participant(Component.text("Offline alive"), lives = 2, online = false)
                 )
             ),
             rankedTeams = (1..6).map { rank ->
                 TournamentLiveSidebarBuilder.RankedTeam(
                     id = if (rank == 6) "viewer-team" else "team-$rank",
-                    displayName = "Team $rank",
+                    displayName = Component.text("Team $rank"),
                     score = 20.0 - rank,
                     rank = if (rank == 6) 9 else rank
                 )
@@ -67,9 +67,9 @@ class TournamentLiveSidebarBuilderTest {
     @Test
     fun startedDistinguishesNotAdmittedTeamFromNonparticipantAndKeepsDomainTieRanks() {
         val ranked = listOf(
-            TournamentLiveSidebarBuilder.RankedTeam("b", "Team B", 10.0, 1),
-            TournamentLiveSidebarBuilder.RankedTeam("a", "Team A", 10.0, 1),
-            TournamentLiveSidebarBuilder.RankedTeam("c", "Team C", 8.0, 3)
+            TournamentLiveSidebarBuilder.RankedTeam("b", Component.text("Team B"), 10.0, 1),
+            TournamentLiveSidebarBuilder.RankedTeam("a", Component.text("Team A"), 10.0, 1),
+            TournamentLiveSidebarBuilder.RankedTeam("c", Component.text("Team C"), 8.0, 3)
         )
         fun lines(participation: TournamentLiveSidebarBuilder.Participation) =
             TournamentLiveSidebarBuilder.started(
@@ -94,7 +94,7 @@ class TournamentLiveSidebarBuilderTest {
             val lines = TournamentLiveSidebarBuilder.started(
                 TournamentLiveSidebarBuilder.StartedSnapshot(
                     TournamentLiveSidebarBuilder.Participation.NotParticipating,
-                    listOf(TournamentLiveSidebarBuilder.RankedTeam("a", "Team A", 1.25, 1))
+                    listOf(TournamentLiveSidebarBuilder.RankedTeam("a", Component.text("Team A"), 1.25, 1))
                 )
             ).lines.map(serializer::serialize)
 
@@ -114,15 +114,15 @@ class TournamentLiveSidebarBuilderTest {
             (team.roster as MutableList).add(TournamentLiveSidebarBuilder.RosterMember(Component.text("Nope")))
         }
 
-        val participantRoster = ArrayList(listOf(TournamentLiveSidebarBuilder.Participant("Before", 1, true)))
-        val participation = TournamentLiveSidebarBuilder.Participation.Confirmed("blue", "Blue", 1.0, participantRoster)
-        participantRoster += TournamentLiveSidebarBuilder.Participant("After", 2, false)
-        assertEquals(listOf("Before"), participation.roster.map { it.displayName })
+        val participantRoster = ArrayList(listOf(TournamentLiveSidebarBuilder.Participant(Component.text("Before"), 1, true)))
+        val participation = TournamentLiveSidebarBuilder.Participation.Confirmed("blue", Component.text("Blue"), 1.0, participantRoster)
+        participantRoster += TournamentLiveSidebarBuilder.Participant(Component.text("After"), 2, false)
+        assertEquals(listOf(Component.text("Before")), participation.roster.map { it.displayName })
         assertThrows(UnsupportedOperationException::class.java) {
             (participation.roster as MutableList).clear()
         }
 
-        val rankedTeams = ArrayList(listOf(TournamentLiveSidebarBuilder.RankedTeam("blue", "Blue", 1.0, 1)))
+        val rankedTeams = ArrayList(listOf(TournamentLiveSidebarBuilder.RankedTeam("blue", Component.text("Blue"), 1.0, 1)))
         val snapshot = TournamentLiveSidebarBuilder.StartedSnapshot(participation, rankedTeams)
         rankedTeams.clear()
         assertEquals(listOf("blue"), snapshot.rankedTeams.map { it.id })
