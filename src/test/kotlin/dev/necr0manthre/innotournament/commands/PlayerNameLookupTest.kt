@@ -8,6 +8,7 @@ import dev.necr0manthre.innotournament.players.PluginPlayer
 import dev.necr0manthre.innotournament.teams.PluginTeam
 import dev.necr0manthre.innotournament.teams.PluginTeam.TeamManager
 import dev.necr0manthre.innotournament.teams.TeamCreateResult
+import dev.necr0manthre.innotournament.teams.invites.InviteSystem
 import io.papermc.paper.command.brigadier.CommandSourceStack
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.event.ClickEvent
@@ -70,7 +71,7 @@ class PlayerNameLookupTest {
             sender
         }
         val manager = TeamManager()
-        val command = TeamsCommand(manager)
+        val command = TeamsCommand(manager, InviteSystem(manager))
         val lookup = TeamsCommand::class.java.getDeclaredMethod("getTargetPlayer", CommandContext::class.java)
             .apply { isAccessible = true }
         fun resolve(name: String): PluginPlayer? {
