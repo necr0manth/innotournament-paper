@@ -6,6 +6,8 @@ import dev.necr0manthre.innotournament.teams.TeamCreateResult
 import net.kyori.adventure.text.Component
 import org.bukkit.damage.DamageSource
 import org.bukkit.entity.Entity
+import org.bukkit.entity.AreaEffectCloud
+import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.Player
 import org.bukkit.entity.Projectile
 import org.bukkit.entity.TNTPrimed
@@ -75,6 +77,41 @@ class TournamentZeroLifeCombatTest {
     }
 
     @Test
+    fun zeroLifeParticipantPoisonSplashCannotAffectOtherPlayers() = withTournament { tournament, attacker ->
+        val target = player(UUID.randomUUID())
+        val mob = proxy<LivingEntity> { null }
+        val affected = listOf<LivingEntity>(target, attacker, mob)
+        val blockedIds = invokeBlockedPoisonTargetIds(tournament, poisonPotion(attacker), affected)
+
+        assertTrue(blockedIds == setOf(target.uniqueId))
+    }
+
+    @Test
+    fun zeroLifeParticipantPoisonCloudCannotAffectOtherPlayers() = withTournament { tournament, attacker ->
+        val target = player(UUID.randomUUID())
+        val mob = proxy<LivingEntity> { null }
+        val affected = listOf<LivingEntity>(target, attacker, mob)
+        val blockedIds = invokeBlockedPoisonTargetIds(tournament, poisonCloud(attacker), affected)
+
+        assertTrue(blockedIds == setOf(target.uniqueId))
+    }
+
+    @Test
+    fun poisonApplicationLeavesPositiveLifeOutsiderAndStaleSourcesUnchanged() =
+        withTournament(lives = 1) { tournament, attacker ->
+            val target = player(UUID.randomUUID())
+            assertTrue(invokeBlockedPoisonTargetIds(tournament, poisonPotion(attacker), listOf(target)).isEmpty())
+
+            tournament.getPlayer(PluginPlayer.get(attacker.uniqueId))!!.setLives(0)
+            setPhase(tournament, TournamentPhase.ENDED)
+            assertTrue(invokeBlockedPoisonTargetIds(tournament, poisonCloud(attacker), listOf(target)).isEmpty())
+
+            setPhase(tournament, TournamentPhase.STARTED)
+            val outsider = player(UUID.randomUUID())
+            assertTrue(invokeBlockedPoisonTargetIds(tournament, poisonCloud(outsider), listOf(target)).isEmpty())
+        }
+
+    @Test
     fun positiveLivesAndOutsidersCanDamagePlayers() = withTournament(lives = 1) { tournament, attacker ->
         val otherPlayer = damageEvent(player(UUID.randomUUID()), attacker, attacker)
         invokeDamageHandler(tournament, otherPlayer)
@@ -138,6 +175,32 @@ class TournamentZeroLifeCombatTest {
         Tournament::class.java.getDeclaredMethod("handleOutgoingDamage", EntityDamageEvent::class.java)
             .apply { isAccessible = true }
             .invoke(tournament, event)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun invokeBlockedPoisonTargetIds(
+        tournament: Tournament,
+        source: Entity,
+        targets: Iterable<LivingEntity>
+    ): Set<UUID> = Tournament::class.java
+        .getDeclaredMethod("blockedPoisonTargetIds", Entity::class.java, Iterable::class.java)
+        .apply { isAccessible = true }
+        .invoke(tournament, source, targets) as Set<UUID>
+
+    private fun poisonPotion(owner: Player) = proxy<org.bukkit.entity.ThrownPotion> { method ->
+        when (method) {
+            "getShooter" -> owner
+            "getOwnerUniqueId" -> owner.uniqueId
+            else -> null
+        }
+    }
+
+    private fun poisonCloud(owner: Player) = proxy<AreaEffectCloud> { method ->
+        when (method) {
+            "getSource" -> owner
+            "getOwnerUniqueId" -> owner.uniqueId
+            else -> null
+        }
     }
 
     private fun setPhase(tournament: Tournament, phase: TournamentPhase) {
