@@ -15,13 +15,13 @@ import dev.necr0manthre.innotournament.util.CommandRegisterer
 import io.papermc.paper.command.brigadier.CommandSourceStack
 import io.papermc.paper.command.brigadier.Commands
 import io.papermc.paper.command.brigadier.argument.ArgumentTypes
-import io.papermc.paper.command.brigadier.argument.resolvers.selector.PlayerSelectorArgumentResolver
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.event.ClickEvent
 import net.kyori.adventure.text.event.HoverEvent
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.format.TextDecoration
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
+import org.bukkit.Bukkit
 import org.bukkit.entity.Player
 
 class TeamsCommand(private val teamManager: TeamManager) {
@@ -169,16 +169,17 @@ class TeamsCommand(private val teamManager: TeamManager) {
         registerer.add(
             Commands.literal("reject")
                 .then(
-                    Commands.argument("player", ArgumentTypes.player())
+                    Commands.argument<String>("player", StringArgumentType.word())
+                        .suggestPlayers()
                         .executes { ctx ->
                             val team = checkTeam(ctx) ?: return@executes 1
                             if (checkOwner(ctx) == null) return@executes 1
-                            val target = ctx.getPlayerArgument("player")
+                            val target = getTargetPlayer(ctx) ?: return@executes 1
 
                             if (!InviteSystem.isPlayerInvitedToTeam(target, team)) {
                                 ctx.source.sender.sendMessage(
                                     Component.text(
-                                        "You can't do it because this player has no join request to your team",
+                                        "This player has no active invitation to your team",
                                         NamedTextColor.RED
                                     )
                                 )
@@ -187,13 +188,13 @@ class TeamsCommand(private val teamManager: TeamManager) {
 
                             InviteSystem.rejectInvite(target, team)
                             ctx.source.sender.sendMessage(
-                                Component.text("You rejected join request of ")
+                                Component.text("You revoked the invitation for ")
                                     .append(target.displayName)
                             )
                             target.player?.sendMessage(
-                                Component.text("Your join request to team ")
+                                Component.text("Your invitation to team ")
                                     .append(team.displayName)
-                                    .append(Component.text(" was rejected"))
+                                    .append(Component.text(" was revoked"))
                             )
                             Command.SINGLE_SUCCESS
                         }
@@ -203,10 +204,11 @@ class TeamsCommand(private val teamManager: TeamManager) {
         registerer.add(
             Commands.literal("invite")
                 .then(
-                    Commands.argument("player", ArgumentTypes.player())
+                    Commands.argument<String>("player", StringArgumentType.word())
+                        .suggestPlayers()
                         .executes { ctx ->
                             val inviter = player(ctx) ?: return@executes 1
-                            val invited = ctx.getPlayerArgument("player")
+                            val invited = getTargetPlayer(ctx) ?: return@executes 1
                             if (invited === inviter) {
                                 ctx.source.sender.sendMessage(
                                     Component.text(
@@ -268,12 +270,13 @@ class TeamsCommand(private val teamManager: TeamManager) {
         registerer.add(
             Commands.literal("tryKick")
                 .then(
-                    Commands.argument("player", ArgumentTypes.player())
+                    Commands.argument<String>("player", StringArgumentType.word())
+                        .suggestPlayers()
                         .executes { ctx ->
                             if (checkTeam(ctx) == null) return@executes 1
                             if (checkOwner(ctx) == null) return@executes 1
 
-                            val target = ctx.getPlayerArgument("player")
+                            val target = getTargetPlayer(ctx) ?: return@executes 1
                             val action = Component.text(" [Kick ", NamedTextColor.RED)
                                 .append(target.displayName)
                                 .append(Component.text(" ]", NamedTextColor.RED))
@@ -339,12 +342,13 @@ class TeamsCommand(private val teamManager: TeamManager) {
         registerer.add(
             Commands.literal("kick")
                 .then(
-                    Commands.argument("player", ArgumentTypes.player())
+                    Commands.argument<String>("player", StringArgumentType.word())
+                        .suggestPlayers()
                         .executes { ctx ->
                             val team = checkTeam(ctx) ?: return@executes 1
                             if (checkOwner(ctx) == null) return@executes 1
 
-                            val target = ctx.getPlayerArgument("player")
+                            val target = getTargetPlayer(ctx) ?: return@executes 1
                             val result = team.tryKickPlayerFromTeam(target)
                             if (!result.isSuccess) {
                                 ctx.source.sender.sendMessage(
@@ -590,12 +594,25 @@ class TeamsCommand(private val teamManager: TeamManager) {
         }
     }
 
-    private fun CommandContext<CommandSourceStack>.getPlayerArgument(name: String): PluginPlayer {
-        return PluginPlayer.get(
-            getArgument(name, PlayerSelectorArgumentResolver::class.java)
-                .resolve(source)
-                .single()
-        )
+    private fun <S, T> RequiredArgumentBuilder<S, T>.suggestPlayers(): RequiredArgumentBuilder<S, T> {
+        return suggests { _, builder ->
+            Bukkit.getOnlinePlayers().forEach { builder.suggest(it.name) }
+            teamManager.getAllTeams().forEach { team ->
+                team.players.forEach { builder.suggest(it.name) }
+            }
+            builder.buildFuture()
+        }
+    }
+
+    private fun getTargetPlayer(ctx: CommandContext<CommandSourceStack>): PluginPlayer? {
+        val name = StringArgumentType.getString(ctx, "player")
+        val target = Bukkit.getPlayerExact(name)
+            ?: Bukkit.getOfflinePlayerIfCached(name)
+            ?: Bukkit.getOfflinePlayers().firstOrNull { it.name?.equals(name, ignoreCase = true) == true }
+        if (target != null) return PluginPlayer.get(target.uniqueId)
+
+        ctx.source.sender.sendMessage(Component.text("Player not found in local server data", NamedTextColor.RED))
+        return null
     }
 
     private fun idFromDisplayName(displayName: Component): String {
