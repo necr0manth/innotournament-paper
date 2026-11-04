@@ -139,33 +139,52 @@ class EventProtocolTest {
             tournament.checkTeam(team)
             val player = checkNotNull(tournament.getPlayer(pluginPlayer))
             val tournamentTeam = checkNotNull(player.team)
-            player.javaClass.getDeclaredMethod("markPrepared").apply { isAccessible = true }.invoke(player)
+            val deathHandler = Tournament::class.java.getDeclaredMethod("handlePlayerDeath", PluginPlayer::class.java)
+                .apply { isAccessible = true }
+            deathHandler.invoke(tournament, pluginPlayer)
+            assertEquals(3, player.lives) // An unprepared participation has not begun losing lives.
+
             var livesExhaustedCount = 0
             val exhaustedListener: (dev.necr0manthre.innotournament.tournament.TournamentPlayer) -> Unit = {
                 if (it === player) livesExhaustedCount++
             }
             tournament.playerRunOutOfLives.subscribe(exhaustedListener)
+            val listener = checkNotNull(InnoTournamentEventHandlers.SCORE_FROM_LIVES
+                .tryParse("add_score_by_lives 7 8 9 10")).listener
+            assertThrows(IllegalStateException::class.java) {
+                listener.listen(tournament, PlayerHolder(player))
+            }
+            assertEquals(0.0, tournamentTeam.score)
+
+            player.javaClass.getDeclaredMethod("markPrepared").apply { isAccessible = true }.invoke(player)
             assertThrows(IllegalArgumentException::class.java) { player.setLives(-1) }
             assertEquals(3, player.lives)
             player.setLives(1)
-            player.setLives(0)
-            player.setLives(0)
+            deathHandler.invoke(tournament, pluginPlayer)
+            deathHandler.invoke(tournament, pluginPlayer)
             assertEquals(1, livesExhaustedCount)
             assertEquals(0, player.lives)
+
+            listener.listen(tournament, PlayerHolder(player))
+            assertEquals(7.0, tournamentTeam.score) // The configured zero-lives score is indexed directly.
             player.setLives(3)
+            listener.listen(tournament, PlayerHolder(player))
+            assertEquals(17.0, tournamentTeam.score) // Lives 3 still selects the final configured score.
             tournament.playerRunOutOfLives.unsubscribe(exhaustedListener)
             val invalidIndex = checkNotNull(InnoTournamentEventHandlers.SCORE_FROM_LIVES
                 .tryParse("add_score_by_lives 1 2 3")).listener
-            val listener = checkNotNull(InnoTournamentEventHandlers.SCORE_FROM_LIVES
-                .tryParse("add_score_by_lives 0 0 0 7")).listener
 
             assertThrows(IndexOutOfBoundsException::class.java) {
                 invalidIndex.listen(tournament, PlayerHolder(player))
             }
-            assertEquals(0.0, tournamentTeam.score)
+            assertEquals(17.0, tournamentTeam.score)
 
-            listener.listen(tournament, PlayerHolder(player))
-            assertEquals(7.0, tournamentTeam.score)
+            Tournament::class.java.getDeclaredField("phase").apply { isAccessible = true }
+                .set(tournament, dev.necr0manthre.innotournament.tournament.TournamentPhase.ENDED)
+            assertThrows(IllegalStateException::class.java) { tournament.addScores(tournamentTeam, 1.0) }
+            assertEquals(17.0, tournamentTeam.score)
+            Tournament::class.java.getDeclaredField("phase").apply { isAccessible = true }
+                .set(tournament, dev.necr0manthre.innotournament.tournament.TournamentPhase.STARTED)
 
             assertTrue(team.tryKickPlayerFromTeam(pluginPlayer).isSuccess)
             assertSame(tournamentTeam, player.team) // The entry retains its join-time team identity.
@@ -173,7 +192,7 @@ class EventProtocolTest {
             assertThrows(IllegalArgumentException::class.java) {
                 listener.listen(tournament, PlayerHolder(player))
             }
-            assertEquals(7.0, tournamentTeam.score)
+            assertEquals(17.0, tournamentTeam.score)
         } finally {
             assertTrue(teamManager.removeTeam(team))
         }

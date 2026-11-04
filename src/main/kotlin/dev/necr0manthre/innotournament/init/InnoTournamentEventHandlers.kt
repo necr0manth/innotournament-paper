@@ -101,9 +101,8 @@ object InnoTournamentEventHandlers {
                 require(tournament.getPlayer(player.pluginPlayer) === player) {
                     "Tournament player is stale"
                 }
-                val team = player.team
                 // Original Java's scores[lives] throws on an out-of-range index.
-                tournament.addScores(team, scores[player.lives])
+                tournament.addScoresToPlayer(player, scores[player.lives])
             }
         }
     )

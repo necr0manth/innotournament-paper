@@ -289,6 +289,7 @@ class Tournament(
     fun addScores(team: TournamentTeam?, score: Double) {
         if (team == null) return
         requireCanonicalTeam(team)
+        check(phase == TournamentPhase.STARTED) { "Team score requires a started tournament" }
         require(score.isFinite()) { "Score must be finite" }
         val delta = score * scoreModifier(team.pluginTeam.players.size)
         require(delta.isFinite()) { "Calculated score must be finite" }
@@ -441,6 +442,12 @@ class Tournament(
         return teamScoreModifiers[teamSize.coerceIn(teamScoreModifiers.indices)]
     }
 
+    private fun handlePlayerDeath(pluginPlayer: PluginPlayer) {
+        val player = getPlayer(pluginPlayer) ?: return
+        if (phase != TournamentPhase.STARTED || !player.prepared || player.lives <= 0) return
+        player.setLives(player.lives - 1)
+    }
+
     private fun registerListener() {
         if (listener != null) return
         listener = object : Listener {
@@ -451,12 +458,7 @@ class Tournament(
 
             @EventHandler
             fun onDeath(event: PlayerDeathEvent) {
-                val data = getPlayer(PluginPlayer.get(event.entity)) ?: return
-                if (phase == TournamentPhase.STARTED && data.lives > 0) {
-                    (data as TournamentPlayerImpl).setLivesInternally(data.lives - 1)
-                    updateSidebars()
-                    if (data.lives == 0) playerRunOutOfLivesEvent.invoke(data)
-                }
+                handlePlayerDeath(PluginPlayer.get(event.entity))
             }
 
             @EventHandler
