@@ -12,7 +12,9 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
+import org.bukkit.plugin.Plugin
 import java.lang.reflect.Proxy
+import java.util.UUID
 
 class TournamentEnvironmentTest {
     @Test
@@ -25,13 +27,13 @@ class TournamentEnvironmentTest {
         val prePoint = point(normal)
         val gamePoint = point(normal)
 
-        TournamentEnvironment(bound, prePoint, gamePoint)
+        TournamentEnvironment(bound, prePoint, gamePoint, tickets())
         assertUnchanged(normal, nether, end)
         assertThrows(IllegalArgumentException::class.java) {
-            TournamentEnvironment(bound, point(other), gamePoint)
+            TournamentEnvironment(bound, point(other), gamePoint, tickets())
         }
         assertThrows(IllegalArgumentException::class.java) {
-            TournamentEnvironment(bound, prePoint, point(other))
+            TournamentEnvironment(bound, prePoint, point(other), tickets())
         }
         assertUnchanged(normal, nether, end, other)
     }
@@ -182,7 +184,7 @@ class TournamentEnvironmentTest {
         assertThrows(IllegalArgumentException::class.java) {
             TournamentEnvironment(
                 bindings(normal, normal, normal, nether, end),
-                WorldPoint(normal.world, Double.MAX_VALUE, 83.0, 236.0), point(normal)
+                WorldPoint(normal.world, Double.MAX_VALUE, 83.0, 236.0), point(normal), tickets()
             ).applyPrepare()
         }
         assertUnchanged(normal, nether, end)
@@ -240,6 +242,54 @@ class TournamentEnvironmentTest {
         assertTrue(unrelated.pvp.isEmpty())
     }
 
+    @Test
+    fun prepareRetainsTheGameWorld65By65PreloadAndReleaseIsIdempotent() {
+        val normal = world("overworld")
+        val nether = world("the_nether")
+        val end = world("the_end")
+        val game = world("arena", "custom")
+        val effects = environment(normal, game, normal, nether, end)
+
+        effects.applyPrepare()
+        effects.applyPrepare()
+
+        assertEquals(65 * 65, game.ticketAdds.size)
+        assertTrue(normal.ticketAdds.isEmpty())
+        assertTrue(game.ticketAdds.contains(-83 to -18))
+        assertTrue(game.ticketAdds.contains(-19 to 46))
+        assertEquals(65 * 65, game.ticketAdds.toSet().size)
+
+        effects.releaseResources()
+        effects.releaseResources()
+
+        assertEquals(65 * 65, game.ticketRemovals.size)
+        assertEquals(game.ticketAdds.toSet(), game.ticketRemovals.toSet())
+    }
+
+    @Test
+    fun releasingEnvironmentLeasesKeepsAnOverlappingGeneratorLease() {
+        val normal = world("overworld")
+        val nether = world("the_nether")
+        val end = world("the_end")
+        val game = world("arena", "custom")
+        val tickets = tickets()
+        val generatorLease = tickets.acquire(game.world, -51, 14)
+        val effects = TournamentEnvironment(
+            bindings(normal, game, normal, nether, end), point(normal), point(game), tickets
+        )
+
+        effects.applyPrepare()
+        effects.releaseResources()
+
+        assertEquals(65 * 65, game.ticketAdds.size)
+        assertEquals(65 * 65 - 1, game.ticketRemovals.size)
+        assertTrue(game.ticketAdds.contains(-51 to 14))
+        assertTrue(!game.ticketRemovals.contains(-51 to 14))
+
+        generatorLease.release()
+        assertEquals(game.ticketAdds.toSet(), game.ticketRemovals.toSet())
+    }
+
     private fun assertUnchanged(vararg worlds: FakeWorld) {
         for (world in worlds) {
             assertTrue(world.mutations.isEmpty(), "Unexpected mutations for ${world.key}: ${world.mutations}")
@@ -249,8 +299,19 @@ class TournamentEnvironmentTest {
     private fun environment(
         pre: FakeWorld, game: FakeWorld, normal: FakeWorld, nether: FakeWorld, end: FakeWorld
     ): TournamentEnvironment = TournamentEnvironment(
-        bindings(pre, game, normal, nether, end), point(pre), point(game)
+        bindings(pre, game, normal, nether, end), point(pre), point(game), tickets()
     )
+
+    private fun tickets() = PluginChunkTickets(Proxy.newProxyInstance(
+        Plugin::class.java.classLoader, arrayOf(Plugin::class.java)
+    ) { self, method, args ->
+        when (method.name) {
+            "equals" -> self === args?.get(0)
+            "hashCode" -> System.identityHashCode(self)
+            "toString" -> "Test plugin"
+            else -> null
+        }
+    } as Plugin)
 
     private fun bindings(
         pre: FakeWorld, game: FakeWorld, normal: FakeWorld, nether: FakeWorld, end: FakeWorld
@@ -268,6 +329,9 @@ class TournamentEnvironmentTest {
         val transitions = mutableListOf<Pair<Double, Long>>()
         val spawns = mutableListOf<Triple<Int, Int, Int>>()
         val pvp = mutableListOf<Boolean>()
+        val ticketAdds = mutableListOf<Pair<Int, Int>>()
+        val ticketRemovals = mutableListOf<Pair<Int, Int>>()
+        private val uid = UUID.randomUUID()
 
         val border: WorldBorder = Proxy.newProxyInstance(
             WorldBorder::class.java.classLoader, arrayOf(WorldBorder::class.java)
@@ -302,6 +366,7 @@ class TournamentEnvironmentTest {
         ) { self, method, args ->
             when (method.name) {
                 "getKey" -> key
+                "getUID" -> uid
                 "getWorldBorder" -> border
                 "setSpawnLocation" -> {
                     assertEquals(3, args!!.size)
@@ -313,6 +378,14 @@ class TournamentEnvironmentTest {
                     assertSame(GameRules.PVP, args!![0])
                     pvp.add(args[1] as Boolean)
                     mutations.add("pvp")
+                    true
+                }
+                "addPluginChunkTicket" -> {
+                    ticketAdds.add(args!![0] as Int to args[1] as Int)
+                    true
+                }
+                "removePluginChunkTicket" -> {
+                    ticketRemovals.add(args!![0] as Int to args[1] as Int)
                     true
                 }
                 "equals" -> self === args?.get(0)
