@@ -52,7 +52,9 @@ object InnoGiveCommand {
 
     /** Convenience registration when `/inno` has no other subcommands; integration may use [build]. */
     fun register(registrar: Commands) {
-        CommandRegisterer(registrar, "inno").register(build())
+        val registerer = CommandRegisterer(registrar, "inno")
+        registerer.add(build())
+        registerer.register()
     }
 
     private fun give(ctx: CommandContext<CommandSourceStack>, count: Int): Int {
