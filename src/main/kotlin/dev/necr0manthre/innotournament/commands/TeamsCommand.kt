@@ -628,12 +628,15 @@ class TeamsCommand(private val teamManager: TeamManager) {
             Bukkit.getOfflinePlayerIfCached(input)?.let {
                 if (it.name?.equals(input, ignoreCase = true) == true) matches.add(it.uniqueId)
             }
-            Bukkit.getOfflinePlayers().forEach {
-                if (it.name?.equals(input, ignoreCase = true) == true) matches.add(it.uniqueId)
-            }
             teamManager.getAllTeams().forEach { team ->
                 team.players.forEach {
                     if (it.name.equals(input, ignoreCase = true)) matches.add(it.uuid)
+                }
+            }
+            // The full offline history can touch disk; only scan it if the quick sources miss.
+            if (matches.isEmpty()) {
+                Bukkit.getOfflinePlayers().forEach {
+                    if (it.name?.equals(input, ignoreCase = true) == true) matches.add(it.uniqueId)
                 }
             }
             if (matches.size == 1) return PluginPlayer.get(matches.single())
