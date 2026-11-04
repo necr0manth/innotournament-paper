@@ -8,10 +8,15 @@ import dev.necr0manthre.innotournament.teams.events.TeamChange
 import dev.necr0manthre.innotournament.tournament.events.*
 import org.bukkit.*
 import org.bukkit.advancement.Advancement
+import org.bukkit.entity.AreaEffectCloud
 import org.bukkit.entity.Player
+import org.bukkit.entity.Projectile
+import org.bukkit.entity.TNTPrimed
+import org.bukkit.entity.Tameable
 import org.bukkit.event.EventHandler
 import org.bukkit.event.HandlerList
 import org.bukkit.event.Listener
+import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.PlayerDeathEvent
 import org.bukkit.event.player.PlayerAdvancementDoneEvent
 import org.bukkit.event.player.PlayerRespawnEvent
@@ -633,6 +638,30 @@ class Tournament(
         player.setLives(player.lives - 1)
     }
 
+    private fun handleOutgoingDamage(event: EntityDamageEvent) {
+        if (phase != TournamentPhase.STARTED || event.entity !is Player) return
+
+        val source = event.damageSource
+        val attackerId = playerSourceId(source.causingEntity)
+            ?: playerSourceId(source.directEntity)
+            ?: (event as? org.bukkit.event.entity.EntityDamageByEntityEvent)?.let { playerSourceId(it.damager) }
+            ?: return
+        if (attackerId == event.entity.uniqueId) return
+
+        val attacker = getPlayer(PluginPlayer.get(attackerId)) ?: return
+        if (!attacker.prepared || getTeam(attacker.team.pluginTeam) !== attacker.team) return
+        if (attacker.lives == 0) event.isCancelled = true
+    }
+
+    private fun playerSourceId(entity: org.bukkit.entity.Entity?): UUID? = when (entity) {
+        is Player -> entity.uniqueId
+        is Projectile -> (entity.shooter as? Player)?.uniqueId ?: entity.ownerUniqueId
+        is TNTPrimed -> playerSourceId(entity.source)
+        is AreaEffectCloud -> (entity.source as? Player)?.uniqueId ?: entity.ownerUniqueId
+        is Tameable -> entity.ownerUniqueId
+        else -> null
+    }
+
     private fun registerListener() {
         if (listener != null) return
         val owned = object : Listener {
@@ -644,6 +673,11 @@ class Tournament(
             @EventHandler
             fun onDeath(event: PlayerDeathEvent) {
                 handlePlayerDeath(PluginPlayer.get(event.entity))
+            }
+
+            @EventHandler
+            fun onEntityDamage(event: EntityDamageEvent) {
+                handleOutgoingDamage(event)
             }
 
             @EventHandler
