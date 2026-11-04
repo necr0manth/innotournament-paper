@@ -41,8 +41,8 @@ class EventProtocolTest {
         EventPlan.of(emptyList()), EventPlan.of(emptyList()), doubleArrayOf(), 0f
     )
 
-    private fun load(json: String, stage: EventPlanStage = EventPlanStage.MAIN): EventPlan =
-        EventLoader.loadEvents(JsonParser.parseString(json), temp.resolve("events.json"), stage)
+    private fun load(json: String): EventPlan =
+        EventLoader.loadEvents(JsonParser.parseString(json), temp.resolve("events.json"))
 
     private class Source<T>(override val valueType: ValueType<T>) : TournamentEvent<T> {
         var subscriptions = 0
@@ -84,10 +84,7 @@ class EventProtocolTest {
         assertThrows(EventPlanLoadException::class.java) { load("""{"undefined": "log"}""") }
         assertThrows(EventPlanLoadException::class.java) { load("""{"time 0": ["log", 42]}""") }
         assertThrows(EventPlanLoadException::class.java) { load("""{"time 0": "unknownAction"}""") }
-        assertThrows(EventPlanLoadException::class.java) { load("""{"onStart": "log"}""", EventPlanStage.PRE_START) }
-        assertThrows(EventPlanLoadException::class.java) { load("""{"onPrepare": "log"}""", EventPlanStage.MAIN) }
-        assertThrows(EventPlanLoadException::class.java) { load("""{"onEnd": "place_start_box"}""") }
-        assertThrows(EventPlanLoadException::class.java) { load("""{"onPrepare": "add_score 1"}""", EventPlanStage.PRE_START) }
+        assertThrows(EventPlanLoadException::class.java) { load("""{"onPrepare": "add_score 1"}""") }
         assertThrows(EventPlanLoadException::class.java) { load("""{"playerKilled": "add_score_by_lives 1 2 BAD"}""") }
         assertThrows(EventPlanLoadException::class.java) { load("""{"playerTick 0": []}""") }
         assertThrows(EventPlanLoadException::class.java) { load("""{"time -1": []}""") }
@@ -162,52 +159,17 @@ class EventProtocolTest {
         }
     }
 
-    @Test fun lifecycleStageRulesMatchCanonicalAndWhitespaceEventNames() {
-        val placements = listOf(
-            Triple("onPrepare", EventPlanStage.PRE_START, EventPlanStage.MAIN),
-            Triple("onStart", EventPlanStage.MAIN, EventPlanStage.PRE_START),
-            Triple("onEnd", EventPlanStage.MAIN, EventPlanStage.PRE_START)
-        )
-        for ((name, allowed, rejected) in placements) {
+    @Test fun lifecycleActionsLoadWithoutPhaseRestrictionsButStillRequireCompatiblePayloads() {
+        for (name in listOf("onPrepare", "onStart", "onEnd")) {
             for (expression in listOf(name, " $name ")) {
-                val json = """{"$expression": "log"}"""
-                assertEquals(1, load(json, allowed).entries.size)
-                val error = assertThrows(EventPlanLoadException::class.java) { load(json, rejected) }
-                assertTrue(error.message!!.contains("events.json"))
-                assertTrue(error.message!!.contains("event '$expression'"))
-            }
-        }
-    }
-
-    @Test fun lifecycleActionRulesCannotBeBypassedWithWhitespace() {
-        for (expression in listOf("onPrepare", " onPrepare ")) {
-            assertEquals(1, load("""{"$expression": "place_start_box"}""", EventPlanStage.PRE_START).entries.size)
-            val error = assertThrows(EventPlanLoadException::class.java) {
-                load("""{"$expression": "add_score 1"}""", EventPlanStage.PRE_START)
-            }
-            assertTrue(error.message!!.contains("action[0] 'add_score 1'"))
-            assertTrue(error.message!!.contains("event '$expression'"))
-            assertTrue(error.message!!.contains("PREPARED"))
-        }
-        for (expression in listOf("onStart", " onStart ")) {
-            assertEquals(1, load("""{"$expression": "place_start_box"}""").entries.size)
-            assertEquals(1, load("""{"$expression": "log"}""").entries.size)
-            val error = assertThrows(EventPlanLoadException::class.java) {
-                load("""{"$expression": "add_score 1"}""")
-            }
-            assertTrue(error.message!!.contains("event '$expression'"))
-            assertTrue(error.message!!.contains("listener requires")) // phase allows it; payload does not
-        }
-        for (expression in listOf("onEnd", " onEnd ")) {
-            assertEquals(1, load("""{"$expression": "log"}""").entries.size)
-            for (action in listOf("place_start_box", "add_score 1")) {
+                assertEquals(1, load("""{"$expression": ["log", "place_start_box"]}""").entries.size)
                 val error = assertThrows(EventPlanLoadException::class.java) {
-                    load("""{"$expression": "$action"}""")
+                    load("""{"$expression": "add_score 1"}""")
                 }
                 assertTrue(error.message!!.contains("events.json"))
                 assertTrue(error.message!!.contains("event '$expression'"))
-                assertTrue(error.message!!.contains("action[0] '$action'"))
-                assertTrue(error.message!!.contains("ENDED"))
+                assertTrue(error.message!!.contains("action[0] 'add_score 1'"))
+                assertTrue(error.message!!.contains("listener requires"))
             }
         }
     }
@@ -228,11 +190,11 @@ class EventProtocolTest {
     @Test fun missingFileDoesNotBecomeSuccessfulEmptyPlan() {
         val path = temp.resolve("not-present.json")
         val error = assertThrows(EventPlanLoadException::class.java) {
-            EventLoader.loadEvents(path, EventPlanStage.MAIN)
+            EventLoader.loadEvents(path)
         }
         assertTrue(error.message!!.contains(path.toString()))
         Files.writeString(path, "{" )
-        assertThrows(EventPlanLoadException::class.java) { EventLoader.loadEvents(path, EventPlanStage.MAIN) }
+        assertThrows(EventPlanLoadException::class.java) { EventLoader.loadEvents(path) }
     }
 
     @Test fun checkedBindingsRunInOrderWithDuplicateActionsAndFailFast() {

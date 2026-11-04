@@ -1,7 +1,6 @@
 package dev.necr0manthre.innotournament.init
 
 import dev.necr0manthre.innotournament.Innotournament
-import dev.necr0manthre.innotournament.tournament.events.EventDeliveryPhase
 import dev.necr0manthre.innotournament.tournament.events.ITournamentEventListener
 import dev.necr0manthre.innotournament.tournament.events.ParsedListener
 import dev.necr0manthre.innotournament.tournament.events.ValueType
@@ -17,19 +16,14 @@ import dev.necr0manthre.innotournament.tournament.events.parsing.parsers.TwoArgu
 import org.bukkit.Bukkit
 
 object InnoTournamentEventHandlers {
-    private val inGameOnly = setOf(EventDeliveryPhase.STARTED)
-    private val beforeOrInGame = setOf(EventDeliveryPhase.PREPARED, EventDeliveryPhase.STARTED)
-    private val anyPhase = EventDeliveryPhase.entries.toSet()
-
     // A concrete typed registration, not a runtime adapter to an arbitrary event payload.
     private fun <V, E : ITournamentEventListener<V>, P : IParser<String, E>> register(
         accepted: ValueType<V>,
-        parser: P,
-        allowedPhases: Set<EventDeliveryPhase> = anyPhase
+        parser: P
     ): IParser<String, ParsedListener<V>> {
         val typed = object : IParser<String, ParsedListener<V>> {
             override fun tryParse(t: String): ParsedListener<V>? =
-                parser.tryParse(t)?.let { ParsedListener(accepted, it, allowedPhases) }
+                parser.tryParse(t)?.let { ParsedListener(accepted, it) }
         }
         return TournamentEventHandlerParserRegistry.register(typed)
     }
@@ -78,7 +72,7 @@ object InnoTournamentEventHandlers {
         ValueType.of(Any::class).nullable(),
         SimpleDecoder("place_start_box") {
             ITournamentEventListener<Any?> { tournament, _ -> tournament.placeStartBox() }
-        }, beforeOrInGame
+        }
     )
 
     val REMOVE_START_BOX = register(
@@ -95,7 +89,7 @@ object InnoTournamentEventHandlers {
             ITournamentEventListener<ITeamProvider> { tournament, teamProvider ->
                 tournament.addScores(teamProvider.team, amount)
             }
-        }), inGameOnly
+        })
     )
 
     val SCORE_FROM_LIVES = register(
@@ -108,7 +102,7 @@ object InnoTournamentEventHandlers {
                 // Original Java's scores[lives] throws on an out-of-range index.
                 tournament.addScores(team, scores[player.lives])
             }
-        }, inGameOnly
+        }
     )
 
     val PVP = register(

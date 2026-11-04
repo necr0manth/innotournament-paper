@@ -23,7 +23,7 @@ class WorldBorderArgumentsTest {
         val entries = JsonArray()
         actions.forEach { entries.add(it) }
         val json = JsonObject().apply { add("onStart", entries) }
-        return EventLoader.loadEvents(json, Path.of("world-border.json"), EventPlanStage.MAIN)
+        return EventLoader.loadEvents(json, Path.of("world-border.json"))
     }
 
     private fun assertInvalid(action: String) {

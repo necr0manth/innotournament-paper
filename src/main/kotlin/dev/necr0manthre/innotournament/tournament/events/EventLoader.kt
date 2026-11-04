@@ -10,17 +10,17 @@ import java.nio.file.Path
 
 /** Strict parsing and the only erased-type conversion boundary of the event protocol. */
 object EventLoader {
-    fun loadEvents(path: Path, stage: EventPlanStage): EventPlan {
+    fun loadEvents(path: Path): EventPlan {
         val json = try {
             Files.newBufferedReader(path).use { reader -> JsonParser.parseReader(reader) }
         } catch (e: Exception) {
             throw EventPlanLoadException("Cannot read or parse event file '$path': ${e.message}", e)
         }
-        return loadEvents(json, path, stage)
+        return loadEvents(json, path)
     }
 
     /** Parse everything before any subscribe/effect; an error never publishes a partial plan. */
-    fun loadEvents(json: JsonElement, path: Path, stage: EventPlanStage): EventPlan {
+    fun loadEvents(json: JsonElement, path: Path): EventPlan {
         if (!json.isJsonObject) throw EventPlanLoadException("$path: expected JSON object of event expressions")
         val rules = ArrayList<EventRule>()
         for ((expression, value) in json.asJsonObject.entrySet()) {
@@ -32,7 +32,6 @@ object EventLoader {
             } catch (e: Exception) {
                 throw EventPlanLoadException("$path: invalid event expression '$expression': ${e.message}", e)
             }
-            val phase = deliveryPhase(path, expression, stage)
             val lines = when {
                 value.isJsonPrimitive && value.asJsonPrimitive.isString -> listOf(value.asString)
                 value.isJsonArray -> value.asJsonArray.mapIndexed { index, item ->
@@ -52,8 +51,6 @@ object EventLoader {
                 } catch (e: Exception) {
                     throw EventPlanLoadException("$location: invalid action: ${e.message}", e)
                 }
-                if (phase !in parsed.allowedPhases)
-                    throw EventPlanLoadException("$location: action is not permitted during $phase")
                 RuleAction(location, parsed)
             }
             rules.add(EventRule(event, EventRuleLocation(path, expression), actions))
@@ -65,24 +62,6 @@ object EventLoader {
     fun bindRules(rules: List<EventRule>): EventPlan = EventPlan.of(rules.map { rule ->
         bind(rule.event, rule.location, rule.actions)
     })
-
-    private fun deliveryPhase(path: Path, expression: String, stage: EventPlanStage): EventDeliveryPhase {
-        // SimpleDecoder accepts surrounding whitespace; lifecycle checks must use the same spelling.
-        val parsedName = expression.trim()
-        return when (parsedName) {
-            "onPrepare" -> {
-                if (stage != EventPlanStage.PRE_START)
-                    throw EventPlanLoadException("$path: event '$expression' only belongs in pre-start plan")
-                EventDeliveryPhase.PREPARED
-            }
-            "onStart", "onEnd" -> {
-                if (stage != EventPlanStage.MAIN)
-                    throw EventPlanLoadException("$path: event '$expression' only belongs in main plan")
-                if (parsedName == "onEnd") EventDeliveryPhase.ENDED else EventDeliveryPhase.STARTED
-            }
-            else -> if (stage == EventPlanStage.PRE_START) EventDeliveryPhase.PREPARED else EventDeliveryPhase.STARTED
-        }
-    }
 
     private fun <T> bind(
         event: TournamentEvent<T>, location: EventRuleLocation, actions: List<RuleAction>
