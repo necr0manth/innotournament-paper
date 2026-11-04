@@ -14,6 +14,8 @@ import org.bukkit.GameMode
 import org.bukkit.Location
 import org.bukkit.Server
 import org.bukkit.entity.Player
+import org.bukkit.plugin.PluginManager
+import org.bukkit.scheduler.BukkitScheduler
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertSame
@@ -176,6 +178,7 @@ class TournamentTickTest {
             setPhase(twoTournament, TournamentPhase.STARTED)
             twoTournament.checkTeam(twoTeam)
             twoTournament.checkTeam(secondTeam)
+            activateTournamentPresentationForTest(twoTournament)
             invokeServerTick(twoTournament)
             assertEquals(TournamentPhase.STARTED, twoTournament.phase)
 
@@ -199,18 +202,7 @@ class TournamentTickTest {
         }
     }
 
-    private fun tournament(manager: PluginTeam.TeamManager = PluginTeam.TeamManager()) = Tournament(
-        manager,
-        Location(null, 0.0, 0.0, 0.0),
-        Location(null, 0.0, 0.0, 0.0),
-        null,
-        Location(null, 0.0, 0.0, 0.0),
-        GameMode.SURVIVAL,
-        EventPlan.of(emptyList()),
-        EventPlan.of(emptyList()),
-        doubleArrayOf(),
-        0f
-    )
+    private fun tournament(manager: PluginTeam.TeamManager = PluginTeam.TeamManager()) = testTournament(manager)
 
     private fun createTeam(manager: PluginTeam.TeamManager, owner: PluginPlayer, id: String) =
         (manager.createNewTeam(owner, id, Component.text(id)) as TeamCreateResult.Created).team
@@ -232,7 +224,7 @@ class TournamentTickTest {
     }
 
     private fun markPrepared(player: TournamentPlayer) {
-        player.javaClass.getDeclaredMethod("markPrepared").apply { isAccessible = true }.invoke(player)
+        markTournamentPlayerPrepared(player)
     }
 
     private fun clearPlayer(tournament: Tournament, player: PluginPlayer) {
@@ -254,6 +246,21 @@ class TournamentTickTest {
         arrayOf(Server::class.java)
     ) { _, method, args ->
         when (method.name) {
+            "isPrimaryThread" -> true
+            "getPluginManager" -> Proxy.newProxyInstance(
+                PluginManager::class.java.classLoader,
+                arrayOf(PluginManager::class.java)
+            ) { _, managerMethod, _ -> if (managerMethod.name == "registerEvents") null else null }
+            "getScheduler" -> Proxy.newProxyInstance(
+                BukkitScheduler::class.java.classLoader,
+                arrayOf(BukkitScheduler::class.java)
+            ) { _, schedulerMethod, _ ->
+                when (schedulerMethod.name) {
+                    "scheduleSyncRepeatingTask" -> 1
+                    "cancelTask" -> null
+                    else -> null
+                }
+            }
             "getPlayer" -> if (online()) playerProxy(args!![0] as UUID) else null
             "getOnlinePlayers" -> if (online()) emptyList<Player>() else emptyList<Player>()
             "getOfflinePlayer" -> offlinePlayerProxy()

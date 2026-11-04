@@ -141,18 +141,7 @@ class TournamentAdvancementTest {
         private val owner = member("adv-owner")
         val team = (manager.createNewTeam(owner, "adv-team", Component.text("adv-team")) as
             TeamCreateResult.Created).team
-        val tournament = Tournament(
-            manager,
-            Location(null, 0.0, 0.0, 0.0),
-            Location(null, 0.0, 0.0, 0.0),
-            null,
-            Location(null, 0.0, 0.0, 0.0),
-            GameMode.SURVIVAL,
-            EventPlan.of(emptyList()),
-            EventPlan.of(emptyList()),
-            doubleArrayOf(),
-            0f
-        )
+        val tournament = testTournament(manager)
         val advancement: Advancement = proxy { method, _ ->
             if (method == "getKey") NamespacedKey.minecraft("test_advancement") else unexpected(method)
         }
@@ -217,7 +206,7 @@ class TournamentAdvancementTest {
         }
 
         private fun setPlayerPrepared(player: TournamentPlayer) {
-            player.javaClass.getDeclaredMethod("markPrepared").apply { isAccessible = true }.invoke(player)
+            markTournamentPlayerPrepared(player)
         }
 
         private fun setServer(): Any? {

@@ -1,11 +1,8 @@
 package dev.necr0manthre.innotournament.tournament
 
 import dev.necr0manthre.innotournament.teams.PluginTeam
-import dev.necr0manthre.innotournament.tournament.events.EventPlan
 import dev.necr0manthre.innotournament.tournament.events.SimpleEvent
 import dev.necr0manthre.innotournament.tournament.events.TournamentEventInstance
-import org.bukkit.GameMode
-import org.bukkit.Location
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
@@ -41,7 +38,9 @@ class TournamentControlTest {
         setCurrent(control, previous)
         control.select(Path.of("missing-tournament.json"))
 
-        assertThrows(Exception::class.java) { control.prepare() }
+        withPrimaryTestServer {
+            assertThrows(Exception::class.java) { control.prepare() }
+        }
 
         assertEquals(TournamentPhase.REMOVED, previous.phase)
         assertNull(control.current)
@@ -73,25 +72,16 @@ class TournamentControlTest {
         var removeNotices = 0
         tournament.onRemove.subscribe { removeNotices++ }
 
-        tournament.remove(RemovalReason.SHUTDOWN)
-        tournament.remove(RemovalReason.ERROR)
+        withPrimaryTestServer {
+            tournament.remove(RemovalReason.SHUTDOWN)
+            tournament.remove(RemovalReason.ERROR)
+        }
 
         assertEquals(TournamentPhase.REMOVED, tournament.phase)
         assertEquals(1, removeNotices)
     }
 
-    private fun tournament() = Tournament(
-        PluginTeam.TeamManager(),
-        Location(null, 0.0, 0.0, 0.0),
-        Location(null, 0.0, 0.0, 0.0),
-        null,
-        Location(null, 0.0, 0.0, 0.0),
-        GameMode.SURVIVAL,
-        EventPlan.of(emptyList()),
-        EventPlan.of(emptyList()),
-        doubleArrayOf(),
-        0f
-    )
+    private fun tournament() = testTournament(PluginTeam.TeamManager())
 
     private fun setCurrent(control: TournamentControl, tournament: Tournament) {
         field(control, "currentValue").set(control, tournament)

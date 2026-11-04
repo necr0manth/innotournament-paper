@@ -35,7 +35,9 @@ class Tournament(
     private val environment: TournamentEnvironment,
     private val playerEffects: TournamentPlayerEffects,
     private val presentation: TournamentPresentation,
-    private val plugin: Plugin
+    private val plugin: Plugin,
+    private val afterParticipationReset: (Player) -> Unit,
+    private val afterSuccessfulStart: (Tournament) -> Unit
 ) {
     private val settings = definition.settings
     sealed interface PlayerTournamentState {
@@ -83,6 +85,7 @@ class Tournament(
             check(getPlayer(pluginPlayer) === this && pluginPlayer.player === player &&
                 pluginPlayer.team === team.pluginTeam) { "Tournament participation changed during its reset" }
             preparation = ParticipationPreparation.READY
+            afterParticipationReset(player)
         }
     }
 
@@ -354,6 +357,7 @@ class Tournament(
         updateFinishEligibility()
         Bukkit.getOnlinePlayers().forEach(::checkPlayer)
         onStartEvent.invoke(Unit)
+        afterSuccessfulStart(this)
     }
 
     fun checkPlayer(player: Player) {

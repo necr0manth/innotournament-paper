@@ -93,11 +93,7 @@ class TournamentSidebarCaptureTest {
                 PluginPlayer.get(UUID.randomUUID()), "deleted", Component.text("Deleted")
             ) as TeamCreateResult.Created).team
 
-            val origin = Location(null, 0.0, 0.0, 0.0)
-            val tournament = Tournament(
-                manager, origin, origin, null, origin, GameMode.SURVIVAL,
-                EventPlan.of(emptyList()), EventPlan.of(emptyList()), doubleArrayOf(), 0f
-            )
+            val tournament = testTournament(manager)
             Tournament::class.java.getDeclaredField("phase").apply { isAccessible = true }
                 .set(tournament, TournamentPhase.STARTED)
             tournament.checkTeam(blue)
@@ -111,8 +107,7 @@ class TournamentSidebarCaptureTest {
             deletedParticipation.addScore(100.0)
             assertTrue(manager.removeTeam(deleted))
             val onlineParticipation = tournament.getPlayer(online)!!
-            onlineParticipation.javaClass.getDeclaredMethod("markPrepared").apply { isAccessible = true }
-                .invoke(onlineParticipation)
+            markTournamentPlayerPrepared(onlineParticipation)
             onlineParticipation.setLives(0)
 
             val captured = TournamentSidebarCapture.captureStarted(tournament, manager)
@@ -148,12 +143,8 @@ class TournamentSidebarCaptureTest {
 
     @Test
     fun startedCaptureRejectsWrongPhaseAndOffThreadCallsBeforeReading() {
-        val origin = Location(null, 0.0, 0.0, 0.0)
         val manager = PluginTeam.TeamManager()
-        val tournament = Tournament(
-            manager, origin, origin, null, origin, GameMode.SURVIVAL,
-            EventPlan.of(emptyList()), EventPlan.of(emptyList()), doubleArrayOf(), 0f
-        )
+        val tournament = testTournament(manager)
         withServer(emptyMap()) {
             val phaseFailure = assertThrows(IllegalStateException::class.java) {
                 TournamentSidebarCapture.captureStarted(tournament, manager)
