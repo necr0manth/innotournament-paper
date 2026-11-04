@@ -1,11 +1,31 @@
 package dev.necr0manthre.innotournament.tournament.environment
 
 import org.bukkit.Bukkit
+import org.bukkit.Location
 import org.bukkit.GameRules
 import org.bukkit.NamespacedKey
 import org.bukkit.Server
 import org.bukkit.World
 import org.bukkit.WorldBorder
+import org.bukkit.block.Block
+import org.bukkit.block.BlockFace
+import org.bukkit.block.data.type.Piston
+import org.bukkit.block.structure.Mirror
+import org.bukkit.block.structure.StructureRotation
+import org.bukkit.entity.Entity
+import org.bukkit.event.EventHandler
+import org.bukkit.event.Listener
+import org.bukkit.event.block.*
+import org.bukkit.event.entity.EntityChangeBlockEvent
+import org.bukkit.event.entity.EntityExplodeEvent
+import org.bukkit.event.player.PlayerBucketEmptyEvent
+import org.bukkit.event.player.PlayerBucketFillEvent
+import org.bukkit.event.world.StructureGrowEvent
+import org.bukkit.plugin.Plugin
+import org.bukkit.structure.Structure
+import org.bukkit.structure.StructureManager
+import org.bukkit.util.BlockVector
+import java.util.Random
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -15,18 +35,30 @@ class TournamentEnvironment(
     private val worlds: ResolvedWorldBindings,
     private val preStartSpawn: WorldPoint,
     private val gameSpawn: WorldPoint,
-    private val chunkTickets: PluginChunkTickets
+    private val chunkTickets: PluginChunkTickets,
+    private val plugin: Plugin,
+    private val structureManager: StructureManager,
+    private val startBoxStructureKey: NamespacedKey?,
+    private val startBoxOrigin: WorldPoint
 ) {
     private val preloadLeases = mutableMapOf<Pair<Int, Int>, ChunkLease>()
+    private var startBox: StartBoxResource? = null
+    private var structureTemplate: Structure? = null
+    private var structureResolved = false
+
+    val gameWorld: World
+        get() = worlds.gameWorld
 
     init {
         require(preStartSpawn.world === worlds.preStartWorld) { "Pre-start point belongs to another world" }
         require(gameSpawn.world === worlds.gameWorld) { "Game point belongs to another world" }
+        require(startBoxOrigin.world === worlds.preStartWorld) { "Start box origin belongs to another world" }
     }
 
     /** Set the pre-start spawn/centers, and expand only the built-in End border to its Paper max. */
     fun applyPrepare() {
         requireMainThread()
+        validateStartBoxConfiguration()
         val pos = blockPosition(preStartSpawn)
         val centers = mutableListOf<CenterChange>()
 
@@ -57,6 +89,7 @@ class TournamentEnvironment(
     /** Release only this environment's retained chunk leases. */
     fun releaseResources() {
         requireMainThread()
+        removeStartBox()
         val leases = preloadLeases.entries.iterator()
         while (leases.hasNext()) {
             val entry = leases.next()
@@ -64,6 +97,69 @@ class TournamentEnvironment(
             leases.remove()
         }
     }
+
+    /** Place the configured template and retain ownership before its first block change. */
+    fun placeStartBox() {
+        requireMainThread()
+        if (startBoxStructureKey == null) return
+        val template = requireNotNull(resolveStructure()) {
+            "Start box structure '$startBoxStructureKey' was not found"
+        }
+        val region = boxRegion(template)
+        val existing = startBox
+        if (existing != null) {
+            check(existing.region.sameArea(region)) { "Remove the existing start box before changing its area" }
+            return
+        }
+
+        val resource = StartBoxResource(region)
+        startBox = resource
+        resource.acquireTickets()
+        Bukkit.getPluginManager().registerEvents(resource.protection, plugin)
+        resource.protectionRegistered = true
+        resource.placementStarted = true
+        template.place(
+            startBoxOrigin.toLocation(), false, StructureRotation.NONE, Mirror.NONE,
+            0, 1.0f, Random(0L)
+        )
+    }
+
+    /** Clear only the owned box; a failed clear retains its protection and leases. */
+    fun removeStartBox() {
+        requireMainThread()
+        val resource = startBox ?: return
+        if (resource.placementStarted) {
+            val region = resource.region
+            for (x in region.minX until region.maxX) {
+                for (y in region.minY until region.maxY) {
+                    for (z in region.minZ until region.maxZ) {
+                        region.world.getBlockAt(x, y, z).type = org.bukkit.Material.AIR
+                    }
+                }
+            }
+        }
+        if (resource.protectionRegistered) {
+            org.bukkit.event.HandlerList.unregisterAll(resource.protection)
+            resource.protectionRegistered = false
+        }
+        resource.releaseTickets()
+        startBox = null
+    }
+
+    /** Test the configured box geometry even before it has been placed. */
+    fun isInsideStartBox(point: WorldPoint): Boolean {
+        if (startBoxStructureKey == null) return false
+        val region = startBox?.region ?: boxRegion(
+            resolveStructure() ?: error("Start box structure '$startBoxStructureKey' was not found")
+        )
+        return region.contains(point)
+    }
+
+    /** Return a new Bukkit Location each time. */
+    fun preStartRespawnLocation(): Location = preStartSpawn.toLocation()
+
+    /** Return a new Bukkit Location at this run's configured game spawn. */
+    fun gameSpawnLocation(): Location = gameSpawn.toLocation()
 
     /** Set the game spawn and all vanilla-related centers using the original dimension branches. */
     fun applyStart() {
@@ -185,6 +281,169 @@ class TournamentEnvironment(
                 if (chunk !in preloadLeases) {
                     preloadLeases[chunk] = chunkTickets.acquire(worlds.gameWorld, x, z)
                 }
+            }
+        }
+    }
+
+    private fun validateStartBoxConfiguration() {
+        if (startBoxStructureKey != null) {
+            val template = requireNotNull(resolveStructure()) {
+                "Start box structure '$startBoxStructureKey' was not found"
+            }
+            boxRegion(template)
+        }
+    }
+
+    private fun resolveStructure(): Structure? {
+        if (!structureResolved) {
+            structureTemplate = startBoxStructureKey?.let { key ->
+                structureManager.loadStructure(key)?.let(structureManager::copy)
+            }
+            structureResolved = true
+        }
+        return structureTemplate
+    }
+
+    private fun boxRegion(structure: Structure): BoxRegion {
+        val size: BlockVector = structure.size
+        val sizeX = size.blockX
+        val sizeY = size.blockY
+        val sizeZ = size.blockZ
+        require(sizeX > 0 && sizeY > 0 && sizeZ > 0) { "Start box structure size must be positive" }
+        val originX = blockCoordinate(startBoxOrigin.x)
+        val originY = blockCoordinate(startBoxOrigin.y)
+        val originZ = blockCoordinate(startBoxOrigin.z)
+        val maxX = Math.addExact(originX, sizeX)
+        val maxY = Math.addExact(originY, sizeY)
+        val maxZ = Math.addExact(originZ, sizeZ)
+        require(originY >= worlds.preStartWorld.minHeight && maxY <= worlds.preStartWorld.maxHeight) {
+            "Start box is outside the build height of ${worlds.preStartWorld.key}"
+        }
+        val region = BoxRegion(worlds.preStartWorld, originX, originY, originZ, maxX, maxY, maxZ)
+        require(region.contains(preStartSpawn)) { "Pre-start spawn must be inside the configured start box" }
+        return region
+    }
+
+    private fun blockCoordinate(value: Double): Int {
+        val floor = floor(value)
+        require(floor >= Int.MIN_VALUE.toDouble() && floor <= Int.MAX_VALUE.toDouble()) {
+            "Start box coordinate is outside the integer range"
+        }
+        return floor.toInt()
+    }
+
+    private inner class StartBoxResource(val region: BoxRegion) {
+        val protection = BoxProtectionListener(region)
+        val leases = mutableListOf<ChunkLease>()
+        var protectionRegistered = false
+        var placementStarted = false
+
+        fun acquireTickets() {
+            val minChunkX = Math.floorDiv(region.minX, 16)
+            val maxChunkX = Math.floorDiv(region.maxX - 1, 16)
+            val minChunkZ = Math.floorDiv(region.minZ, 16)
+            val maxChunkZ = Math.floorDiv(region.maxZ - 1, 16)
+            for (x in minChunkX..maxChunkX) {
+                for (z in minChunkZ..maxChunkZ) {
+                    leases += chunkTickets.acquire(region.world, x, z)
+                }
+            }
+        }
+
+        fun releaseTickets() {
+            while (leases.isNotEmpty()) {
+                leases.last().release()
+                leases.removeAt(leases.lastIndex)
+            }
+        }
+    }
+
+    private class BoxRegion(
+        val world: World,
+        val minX: Int,
+        val minY: Int,
+        val minZ: Int,
+        val maxX: Int,
+        val maxY: Int,
+        val maxZ: Int
+    ) {
+        fun sameArea(other: BoxRegion): Boolean = world === other.world && minX == other.minX &&
+            minY == other.minY && minZ == other.minZ && maxX == other.maxX &&
+            maxY == other.maxY && maxZ == other.maxZ
+
+        fun contains(point: WorldPoint): Boolean = point.world === world &&
+            point.x >= minX && point.x < maxX && point.y >= minY && point.y < maxY &&
+            point.z >= minZ && point.z < maxZ
+
+        fun contains(block: Block): Boolean = block.world === world &&
+            block.x >= minX && block.x < maxX && block.y >= minY && block.y < maxY &&
+            block.z >= minZ && block.z < maxZ
+
+        fun contains(entity: Entity): Boolean = entity.world === world &&
+            entity.location.x >= minX && entity.location.x < maxX &&
+            entity.location.y >= minY && entity.location.y < maxY &&
+            entity.location.z >= minZ && entity.location.z < maxZ
+    }
+
+    private class BoxProtectionListener(private val region: BoxRegion) : Listener {
+        private fun protected(block: Block) = region.contains(block)
+
+        @EventHandler fun onBreak(event: BlockBreakEvent) { if (protected(event.block)) event.isCancelled = true }
+        @EventHandler fun onPlace(event: BlockPlaceEvent) { if (protected(event.block)) event.isCancelled = true }
+        @EventHandler fun onMultiPlace(event: BlockMultiPlaceEvent) {
+            if (event.replacedBlockStates.any { protected(it.block) }) event.isCancelled = true
+        }
+        @EventHandler fun onBucketEmpty(event: PlayerBucketEmptyEvent) {
+            if (protected(event.block)) event.isCancelled = true
+        }
+        @EventHandler fun onBucketFill(event: PlayerBucketFillEvent) { if (protected(event.block)) event.isCancelled = true }
+        @EventHandler fun onEntityExplode(event: EntityExplodeEvent) { event.blockList().removeIf(::protected) }
+        @EventHandler fun onBlockExplode(event: BlockExplodeEvent) { event.blockList().removeIf(::protected) }
+        @EventHandler fun onPistonExtend(event: BlockPistonExtendEvent) {
+            if (protectPiston(event.blocks, event.block, event.direction)) event.isCancelled = true
+        }
+        @EventHandler fun onPistonRetract(event: BlockPistonRetractEvent) {
+            if (protectPiston(event.blocks, event.block, event.direction)) event.isCancelled = true
+        }
+        @EventHandler fun onFlow(event: BlockFromToEvent) {
+            if (protected(event.block) || protected(event.toBlock)) event.isCancelled = true
+        }
+        @EventHandler fun onSpread(event: BlockSpreadEvent) {
+            if (protected(event.block) || protected(event.source)) event.isCancelled = true
+        }
+        @EventHandler fun onBurn(event: BlockBurnEvent) {
+            if (protected(event.block) || event.ignitingBlock?.let(::protected) == true) event.isCancelled = true
+        }
+        @EventHandler fun onIgnite(event: BlockIgniteEvent) {
+            if (protected(event.block) || event.ignitingBlock?.let(::protected) == true) event.isCancelled = true
+        }
+        @EventHandler fun onForm(event: BlockFormEvent) { if (protected(event.block)) event.isCancelled = true }
+        @EventHandler fun onGrow(event: BlockGrowEvent) { if (protected(event.block)) event.isCancelled = true }
+        @EventHandler fun onFade(event: BlockFadeEvent) { if (protected(event.block)) event.isCancelled = true }
+        @EventHandler fun onLeavesDecay(event: LeavesDecayEvent) { if (protected(event.block)) event.isCancelled = true }
+        @EventHandler fun onFluidLevelChange(event: FluidLevelChangeEvent) {
+            if (protected(event.block)) event.isCancelled = true
+        }
+        @EventHandler fun onSpongeAbsorb(event: SpongeAbsorbEvent) {
+            if (protected(event.block)) {
+                event.isCancelled = true
+            } else {
+                event.blocks.removeIf { protected(it.block) }
+            }
+        }
+        @EventHandler fun onEntityChangeBlock(event: EntityChangeBlockEvent) { if (protected(event.block)) event.isCancelled = true }
+        @EventHandler fun onPhysics(event: BlockPhysicsEvent) { if (protected(event.block)) event.isCancelled = true }
+        @EventHandler fun onFertilize(event: BlockFertilizeEvent) {
+            if (protected(event.block) || event.blocks.any { protected(it.block) }) event.isCancelled = true
+        }
+        @EventHandler fun onStructureGrow(event: StructureGrowEvent) {
+            if (event.blocks.any { protected(it.block) }) event.isCancelled = true
+        }
+
+        private fun protectPiston(blocks: List<Block>, piston: Block, movement: BlockFace): Boolean {
+            val head = piston.getRelative((piston.blockData as Piston).facing)
+            return protected(piston) || protected(head) || blocks.any {
+                protected(it) || protected(it.getRelative(movement))
             }
         }
     }

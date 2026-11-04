@@ -6,13 +6,30 @@ import org.bukkit.NamespacedKey
 import org.bukkit.Server
 import org.bukkit.World
 import org.bukkit.WorldBorder
+import org.bukkit.block.Block
+import org.bukkit.block.BlockFace
+import org.bukkit.block.BlockState
+import org.bukkit.block.data.BlockData
+import org.bukkit.block.data.type.Piston
+import org.bukkit.event.block.BlockBurnEvent
+import org.bukkit.event.block.BlockFadeEvent
+import org.bukkit.event.block.BlockIgniteEvent
+import org.bukkit.event.block.BlockPistonExtendEvent
+import org.bukkit.event.block.BlockPistonRetractEvent
+import org.bukkit.event.block.FluidLevelChangeEvent
+import org.bukkit.event.block.LeavesDecayEvent
+import org.bukkit.event.block.SpongeAbsorbEvent
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotSame
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import org.bukkit.plugin.Plugin
+import org.bukkit.util.BlockVector
+import org.bukkit.structure.Structure
+import org.bukkit.structure.StructureManager
 import java.lang.reflect.Proxy
 import java.util.UUID
 
@@ -27,13 +44,13 @@ class TournamentEnvironmentTest {
         val prePoint = point(normal)
         val gamePoint = point(normal)
 
-        TournamentEnvironment(bound, prePoint, gamePoint, tickets())
+        TournamentEnvironment(bound, prePoint, gamePoint, tickets(), testPlugin(), structureManager(), null, prePoint)
         assertUnchanged(normal, nether, end)
         assertThrows(IllegalArgumentException::class.java) {
-            TournamentEnvironment(bound, point(other), gamePoint, tickets())
+            TournamentEnvironment(bound, point(other), gamePoint, tickets(), testPlugin(), structureManager(), null, point(other))
         }
         assertThrows(IllegalArgumentException::class.java) {
-            TournamentEnvironment(bound, prePoint, point(other), tickets())
+            TournamentEnvironment(bound, prePoint, point(other), tickets(), testPlugin(), structureManager(), null, prePoint)
         }
         assertUnchanged(normal, nether, end, other)
     }
@@ -184,7 +201,8 @@ class TournamentEnvironmentTest {
         assertThrows(IllegalArgumentException::class.java) {
             TournamentEnvironment(
                 bindings(normal, normal, normal, nether, end),
-                WorldPoint(normal.world, Double.MAX_VALUE, 83.0, 236.0), point(normal), tickets()
+                WorldPoint(normal.world, Double.MAX_VALUE, 83.0, 236.0), point(normal), tickets(),
+                testPlugin(), structureManager(), null, point(normal)
             ).applyPrepare()
         }
         assertUnchanged(normal, nether, end)
@@ -275,7 +293,8 @@ class TournamentEnvironmentTest {
         val tickets = tickets()
         val generatorLease = tickets.acquire(game.world, -51, 14)
         val effects = TournamentEnvironment(
-            bindings(normal, game, normal, nether, end), point(normal), point(game), tickets
+            bindings(normal, game, normal, nether, end), point(normal), point(game), tickets,
+            testPlugin(), structureManager(), null, point(normal)
         )
 
         effects.applyPrepare()
@@ -290,6 +309,121 @@ class TournamentEnvironmentTest {
         assertEquals(game.ticketAdds.toSet(), game.ticketRemovals.toSet())
     }
 
+    @Test
+    fun configuredBoxGeometryWorksBeforePlacementAndRespawnLocationIsFresh() {
+        val normal = world("overworld")
+        val nether = world("the_nether")
+        val end = world("the_end")
+        val game = world("arena", "custom")
+        val key = NamespacedKey("test", "box")
+        val template = structure(BlockVector(7, 5, 9))
+        var structureLoads = 0
+        val effects = TournamentEnvironment(
+            bindings(normal, game, normal, nether, end), point(normal), point(game), tickets(),
+            testPlugin(), structureManager(template) { structureLoads++ }, key,
+            WorldPoint(normal.world, -808.0, 80.0, 232.0)
+        )
+
+        assertEquals(0, structureLoads)
+        assertTrue(effects.isInsideStartBox(point(normal)))
+        assertEquals(1, structureLoads)
+        assertTrue(!effects.isInsideStartBox(WorldPoint(normal.world, -801.0, 84.0, 232.0)))
+        assertTrue(!effects.isInsideStartBox(WorldPoint(nether.world, -805.0, 83.0, 236.0)))
+        val first = effects.preStartRespawnLocation()
+        val second = effects.preStartRespawnLocation()
+        assertNotSame(first, second)
+        assertSame(game.world, effects.gameWorld)
+        val gameSpawn = effects.gameSpawnLocation()
+        val anotherGameSpawn = effects.gameSpawnLocation()
+        assertNotSame(gameSpawn, anotherGameSpawn)
+        assertSame(game.world, gameSpawn.world)
+        assertEquals(-805.0, gameSpawn.x)
+        first.x = 10_000.0
+        assertEquals(-805.0, second.x)
+        assertTrue(normal.ticketAdds.isEmpty())
+        assertUnchanged(normal, game, nether, end)
+    }
+
+    @Test
+    fun invalidConfiguredBoxGeometryFailsBeforeTicketsOrWorldChanges() {
+        val normal = world("overworld")
+        val nether = world("the_nether")
+        val end = world("the_end")
+        val effects = TournamentEnvironment(
+            bindings(normal, normal, normal, nether, end), point(normal), point(normal), tickets(),
+            testPlugin(), structureManager(structure(BlockVector(0, 5, 9))),
+            NamespacedKey("test", "bad"), WorldPoint(normal.world, -808.0, 80.0, 232.0)
+        )
+
+        assertThrows(IllegalArgumentException::class.java) { effects.applyPrepare() }
+        assertTrue(normal.ticketAdds.isEmpty())
+        assertUnchanged(normal, nether, end)
+
+        val missingTemplate = TournamentEnvironment(
+            bindings(normal, normal, normal, nether, end), point(normal), point(normal), tickets(),
+            testPlugin(), structureManager(), NamespacedKey("test", "missing"),
+            WorldPoint(normal.world, -808.0, 80.0, 232.0)
+        )
+        assertThrows(IllegalArgumentException::class.java) { missingTemplate.applyPrepare() }
+        assertTrue(normal.ticketAdds.isEmpty())
+        assertUnchanged(normal, nether, end)
+    }
+
+    @Test
+    fun boxProtectionCoversChangedTargetsSourcesPistonMovesAndNaturalChanges() {
+        val world = world("overworld")
+        val listener = boxProtectionListener(world.world)
+
+        val changedInside = block(world.world, 1, 1, 1)
+        val outside = block(world.world, 4, 1, 1)
+
+        val extending = BlockPistonExtendEvent(
+            block(world.world, -1, 1, 1, BlockFace.EAST), emptyList(), BlockFace.EAST
+        )
+        invokeProtection(listener, "onPistonExtend", extending)
+        assertTrue(extending.isCancelled) // Empty moved list, head enters the protected box.
+
+        val retractingHead = BlockPistonRetractEvent(
+            block(world.world, -1, 1, 1, BlockFace.EAST), emptyList(), BlockFace.WEST
+        )
+        invokeProtection(listener, "onPistonRetract", retractingHead)
+        assertTrue(retractingHead.isCancelled) // The piston head itself is inside the box.
+
+        val retractingMove = BlockPistonRetractEvent(
+            block(world.world, -2, 1, 1, BlockFace.EAST),
+            listOf(block(world.world, 4, 1, 1)), BlockFace.WEST
+        )
+        invokeProtection(listener, "onPistonRetract", retractingMove)
+        assertTrue(retractingMove.isCancelled) // Source outside, actual retraction target inside.
+
+        val outsideDestination = block(world.world, 4, 1, 1)
+        val insideFireSource = block(world.world, 1, 1, 1)
+        val burn = BlockBurnEvent(outsideDestination, insideFireSource)
+        invokeProtection(listener, "onBurn", burn)
+        assertTrue(burn.isCancelled)
+        val ignite = BlockIgniteEvent(
+            outsideDestination, BlockIgniteEvent.IgniteCause.LAVA, insideFireSource
+        )
+        invokeProtection(listener, "onIgnite", ignite)
+        assertTrue(ignite.isCancelled)
+
+        val fade = BlockFadeEvent(changedInside, blockState(changedInside))
+        invokeProtection(listener, "onFade", fade)
+        assertTrue(fade.isCancelled)
+        val decay = LeavesDecayEvent(changedInside)
+        invokeProtection(listener, "onLeavesDecay", decay)
+        assertTrue(decay.isCancelled)
+        val fluid = FluidLevelChangeEvent(changedInside, blockData())
+        invokeProtection(listener, "onFluidLevelChange", fluid)
+        assertTrue(fluid.isCancelled)
+
+        val sponge = SpongeAbsorbEvent(
+            outside, arrayListOf(blockState(changedInside), blockState(outside))
+        )
+        invokeProtection(listener, "onSpongeAbsorb", sponge)
+        assertEquals(listOf(outside), sponge.blocks.map { it.block })
+    }
+
     private fun assertUnchanged(vararg worlds: FakeWorld) {
         for (world in worlds) {
             assertTrue(world.mutations.isEmpty(), "Unexpected mutations for ${world.key}: ${world.mutations}")
@@ -299,10 +433,11 @@ class TournamentEnvironmentTest {
     private fun environment(
         pre: FakeWorld, game: FakeWorld, normal: FakeWorld, nether: FakeWorld, end: FakeWorld
     ): TournamentEnvironment = TournamentEnvironment(
-        bindings(pre, game, normal, nether, end), point(pre), point(game), tickets()
+        bindings(pre, game, normal, nether, end), point(pre), point(game), tickets(),
+        testPlugin(), structureManager(), null, point(pre)
     )
 
-    private fun tickets() = PluginChunkTickets(Proxy.newProxyInstance(
+    private fun testPlugin() = Proxy.newProxyInstance(
         Plugin::class.java.classLoader, arrayOf(Plugin::class.java)
     ) { self, method, args ->
         when (method.name) {
@@ -311,7 +446,84 @@ class TournamentEnvironmentTest {
             "toString" -> "Test plugin"
             else -> null
         }
-    } as Plugin)
+    } as Plugin
+
+    private fun structureManager(structure: Structure? = null, onLoad: () -> Unit = {}) = Proxy.newProxyInstance(
+        StructureManager::class.java.classLoader, arrayOf(StructureManager::class.java)
+    ) { _, method, args ->
+        when (method.name) {
+            "loadStructure" -> { onLoad(); structure }
+            "copy" -> structure((args!![0] as Structure).size)
+            else -> error("Unexpected StructureManager method: ${method.name}")
+        }
+    } as StructureManager
+
+    private fun structure(size: BlockVector) = Proxy.newProxyInstance(
+        Structure::class.java.classLoader, arrayOf(Structure::class.java)
+    ) { _, method, _ ->
+        if (method.name == "getSize") size else error("Unexpected Structure method: ${method.name}")
+    } as Structure
+
+    private fun boxProtectionListener(world: World): Any {
+        val environmentClass = TournamentEnvironment::class.java
+        val regionClass = Class.forName("${environmentClass.name}\$BoxRegion")
+        val regionConstructor = regionClass.getDeclaredConstructor(
+            World::class.java, Int::class.javaPrimitiveType, Int::class.javaPrimitiveType,
+            Int::class.javaPrimitiveType, Int::class.javaPrimitiveType, Int::class.javaPrimitiveType,
+            Int::class.javaPrimitiveType
+        ).apply { isAccessible = true }
+        val region = regionConstructor.newInstance(world, 0, 0, 0, 4, 4, 4)
+        val listenerClass = Class.forName("${environmentClass.name}\$BoxProtectionListener")
+        return listenerClass.getDeclaredConstructors().single().apply { isAccessible = true }
+            .newInstance(region)
+    }
+
+    private fun invokeProtection(listener: Any, method: String, event: Any) {
+        listener.javaClass.getDeclaredMethod(method, event.javaClass).apply { isAccessible = true }
+            .invoke(listener, event)
+    }
+
+    private fun block(world: World, x: Int, y: Int, z: Int, facing: BlockFace? = null): Block =
+        Proxy.newProxyInstance(Block::class.java.classLoader, arrayOf(Block::class.java)) { self, method, args ->
+            when (method.name) {
+                "getWorld" -> world
+                "getX" -> x
+                "getY" -> y
+                "getZ" -> z
+                "getBlockData" -> if (facing == null) blockData() else pistonData(facing)
+                "getRelative" -> {
+                    val face = args!![0] as BlockFace
+                    val distance = if (args.size > 1) args[1] as Int else 1
+                    block(world, x + face.modX * distance, y + face.modY * distance,
+                        z + face.modZ * distance)
+                }
+                "getState" -> blockState(self as Block)
+                "equals" -> self === args?.get(0)
+                "hashCode" -> System.identityHashCode(self)
+                else -> null
+            }
+        } as Block
+
+    private fun blockState(block: Block) = Proxy.newProxyInstance(
+        BlockState::class.java.classLoader, arrayOf(BlockState::class.java)
+    ) { self, method, args ->
+        when (method.name) {
+            "getBlock" -> block
+            "equals" -> self === args?.get(0)
+            "hashCode" -> System.identityHashCode(self)
+            else -> null
+        }
+    } as BlockState
+
+    private fun blockData() = Proxy.newProxyInstance(
+        BlockData::class.java.classLoader, arrayOf(BlockData::class.java)
+    ) { _, _, _ -> null } as BlockData
+
+    private fun pistonData(facing: BlockFace) = Proxy.newProxyInstance(
+        Piston::class.java.classLoader, arrayOf(Piston::class.java)
+    ) { _, method, _ -> if (method.name == "getFacing") facing else null } as Piston
+
+    private fun tickets() = PluginChunkTickets(testPlugin())
 
     private fun bindings(
         pre: FakeWorld, game: FakeWorld, normal: FakeWorld, nether: FakeWorld, end: FakeWorld
@@ -368,6 +580,8 @@ class TournamentEnvironmentTest {
                 "getKey" -> key
                 "getUID" -> uid
                 "getWorldBorder" -> border
+                "getMinHeight" -> -64
+                "getMaxHeight" -> 320
                 "setSpawnLocation" -> {
                     assertEquals(3, args!!.size)
                     spawns.add(Triple(args[0] as Int, args[1] as Int, args[2] as Int))
