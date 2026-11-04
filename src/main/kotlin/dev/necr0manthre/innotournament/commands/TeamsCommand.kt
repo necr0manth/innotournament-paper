@@ -452,7 +452,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
                 }
                 .then(
                     Commands.argument<String>("team", StringArgumentType.greedyString())
-                        .requires { source -> source.sender.hasPermission("minecraft.command.team") }
+                        .requires { source -> source.sender.hasPermission("innotournament.admin") }
                         .suggestTeams()
                         .executes { ctx ->
                             val teamId = StringArgumentType.getString(ctx, "team")
@@ -480,7 +480,7 @@ class TeamsCommand(private val teamManager: TeamManager) {
 
         registerer.add(
             Commands.literal("removeAll")
-                .requires { source -> source.sender.hasPermission("minecraft.command.team") }
+                .requires { source -> source.sender.hasPermission("innotournament.admin") }
                 .executes { ctx ->
                     teamManager.getAllTeams().forEach { teamManager.removeTeamFromCommand(it) }
                     ctx.source.sender.sendMessage(Component.text("All teams removed"))

@@ -30,7 +30,7 @@ class CommandRegistererTest {
         } as Commands
 
         val registerer = CommandRegisterer(registrar, "teams", "p")
-        val restricted = Predicate<CommandSourceStack> { it.sender.hasPermission("minecraft.command.team") }
+        val restricted = Predicate<CommandSourceStack> { it.sender.hasPermission("innotournament.admin") }
         registerer.add(Commands.literal("create").then(Commands.argument("name", StringArgumentType.word())))
         registerer.add(Commands.literal("list").build()) // Pre-built node overload
         registerer.add(Commands.literal("removeAll").requires(restricted))

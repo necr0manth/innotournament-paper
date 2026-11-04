@@ -28,6 +28,10 @@ paperPluginYaml {
     bootstrapper = "dev.necr0manthre.innotournament.InnotournamentBootstrap"
     loader = "xyz.jpenilla.gremlin.runtime.platformsupport.DefaultsPaperPluginLoader"
     apiVersion = "26.1.2"
+    permissions.register("innotournament.admin") {
+        description.set("Allows access to tournament administration commands")
+        default.set(xyz.jpenilla.resourcefactory.bukkit.Permission.Default.OP)
+    }
 }
 
 kotlin {

@@ -39,7 +39,7 @@ class TournamentCommand(private val teamManager: TeamManager) {
 
         registerer.add(
             Commands.literal("select")
-                .requires { it.sender.hasPermission("minecraft.command.function") }
+                .requires { it.sender.hasPermission("innotournament.admin") }
                 .then(
                     Commands.argument<String>("filePath", StringArgumentType.string())
                         .suggests { _, builder ->
@@ -60,7 +60,7 @@ class TournamentCommand(private val teamManager: TeamManager) {
 
         registerer.add(
             Commands.literal("prepare")
-                .requires { it.sender.hasPermission("minecraft.command.function") }
+                .requires { it.sender.hasPermission("innotournament.admin") }
                 .executes { ctx ->
                     val tournament = ensureTournament(ctx) ?: return@executes 0
                     try {
@@ -77,7 +77,7 @@ class TournamentCommand(private val teamManager: TeamManager) {
 
         registerer.add(
             Commands.literal("start")
-                .requires { it.sender.hasPermission("minecraft.command.function") }
+                .requires { it.sender.hasPermission("innotournament.admin") }
                 .executes { ctx ->
                     val tournament = ensureTournament(ctx) ?: return@executes 0
                     try {
@@ -95,7 +95,7 @@ class TournamentCommand(private val teamManager: TeamManager) {
 
         registerer.add(
             Commands.literal("stop")
-                .requires { it.sender.hasPermission("minecraft.command.function") }
+                .requires { it.sender.hasPermission("innotournament.admin") }
                 .executes {
                     Tournament.setTournament(null)
                     Command.SINGLE_SUCCESS
