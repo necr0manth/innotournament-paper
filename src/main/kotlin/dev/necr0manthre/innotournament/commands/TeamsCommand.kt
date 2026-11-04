@@ -450,6 +450,32 @@ class TeamsCommand(private val teamManager: TeamManager) {
                     updateSidebars()
                     Command.SINGLE_SUCCESS
                 }
+                .then(
+                    Commands.argument<String>("team", StringArgumentType.greedyString())
+                        .requires { source -> source.sender.hasPermission("minecraft.command.team") }
+                        .suggestTeams()
+                        .executes { ctx ->
+                            val teamId = StringArgumentType.getString(ctx, "team")
+                            val team = teamManager.getTeamById(teamId)
+                            if (team == null) {
+                                ctx.source.sender.sendMessage(Component.text("Team not found", NamedTextColor.RED))
+                                return@executes 0
+                            }
+
+                            if (!teamManager.removeTeamFromCommand(team)) {
+                                ctx.source.sender.sendMessage(
+                                    Component.text("Unable to remove team", NamedTextColor.RED)
+                                )
+                                return@executes 0
+                            }
+
+                            ctx.source.sender.sendMessage(
+                                Component.text("Removed team ").append(team.displayName)
+                            )
+                            updateSidebars()
+                            Command.SINGLE_SUCCESS
+                        }
+                )
         )
 
         registerer.add(
