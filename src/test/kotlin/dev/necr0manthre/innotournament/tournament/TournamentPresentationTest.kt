@@ -1,5 +1,6 @@
 package dev.necr0manthre.innotournament.tournament
 
+import io.papermc.paper.scoreboard.numbers.NumberFormat
 import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.Server
@@ -225,8 +226,9 @@ class TournamentPresentationTest {
 
         private fun objective(): Objective {
             lateinit var scoreboard: Scoreboard
-            val objective = proxy<Objective> { method, _ ->
+            val objective = proxy<Objective> { method, args ->
                 when (method) {
+                    "numberFormat" -> { assertEquals(NumberFormat.blank(), args!!.single()); null }
                     "setDisplaySlot", "displayName", "unregister" -> null
                     "getScore" -> proxy<Score> { scoreMethod, _ ->
                         if (scoreMethod == "customName" || scoreMethod == "setScore") null
