@@ -57,7 +57,6 @@ class MapItemDelivery(
                 Component.text("Yellow: ordinary generator", NamedTextColor.YELLOW),
                 Component.text("Cyan: book generator", NamedTextColor.AQUA),
                 Component.text("Red: Nether generator", NamedTextColor.RED),
-                Component.text("White: mixed generators", NamedTextColor.WHITE),
                 Component.text("Resolution: ${1 shl area.scale} blocks per pixel", NamedTextColor.GRAY)
             )
         )

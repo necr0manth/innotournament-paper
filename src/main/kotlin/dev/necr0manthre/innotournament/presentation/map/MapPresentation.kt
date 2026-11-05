@@ -25,7 +25,7 @@ class MapPresentation(
     private data class OwnedView(
         val area: MapAreaKey,
         val map: MapView,
-        val markerRenderer: GeneratorMapMarkerRenderer,
+        val iconRenderer: GeneratorMapIconRenderer,
         val renderers: List<MapRenderer>
     )
 
@@ -113,15 +113,14 @@ class MapPresentation(
     private fun attach(map: MapView, area: MapAreaKey, world: World): OwnedView {
         views[area]?.let { return it }
         if (world.environment != World.Environment.NETHER) map.setTrackingPosition(true)
-        val marker = GeneratorMapMarkerRenderer()
+        val icons = GeneratorMapIconRenderer()
         val renderers = buildList {
             if (world.environment == World.Environment.NETHER) {
                 add(NetherMapBackgroundRenderer())
-                add(marker)
                 add(NetherPlayerCursorRenderer(area))
-            } else {
-                add(marker)
             }
+            // Cursor list order controls which icons cover others, so generator icons come last.
+            add(icons)
         }
         val added = ArrayList<MapRenderer>(renderers.size)
         try {
@@ -134,7 +133,7 @@ class MapPresentation(
             throw failure
         }
 
-        val owned = OwnedView(area, map, marker, renderers)
+        val owned = OwnedView(area, map, icons, renderers)
         views[area] = owned
         dirty = true
         return owned
@@ -162,7 +161,7 @@ class MapPresentation(
         if (!dirty) return
         val snapshot = placements.values.toList()
         views.values.forEach { owned ->
-            owned.markerRenderer.update(GeneratorMapProjection.markerLayer(snapshot, owned.area))
+            owned.iconRenderer.update(GeneratorMapProjection.icons(snapshot, owned.area))
         }
         dirty = false
     }

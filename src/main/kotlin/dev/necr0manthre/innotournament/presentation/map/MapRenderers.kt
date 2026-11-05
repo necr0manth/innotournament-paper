@@ -1,48 +1,49 @@
 package dev.necr0manthre.innotournament.presentation.map
 
+import dev.necr0manthre.innotournament.generators.GeneratorType
 import org.bukkit.Location
+import org.bukkit.entity.Player
 import org.bukkit.map.MapCanvas
 import org.bukkit.map.MapCursor
 import org.bukkit.map.MapRenderer
 import org.bukkit.map.MapView
-import org.bukkit.entity.Player
 import java.awt.Color
 import java.util.WeakHashMap
 
-/** Draws one ready marker snapshot without reading the world or loading chunks. */
-class GeneratorMapMarkerRenderer : MapRenderer(true) {
-    private var pixels: List<GeneratorMapPixel> = emptyList()
-    private val renderedByCanvas = WeakHashMap<MapCanvas, Map<Int, GeneratorPointColor>>()
+/** Draws native type-specific generator icons without reading the world or loading chunks. */
+class GeneratorMapIconRenderer : MapRenderer(true) {
+    private var icons: List<GeneratorMapIcon> = emptyList()
+    private val renderedByCanvas = WeakHashMap<MapCanvas, Map<GeneratorMapIcon, MapCursor>>()
 
-    /** Replaces the layer with a detached copy of the supplied ready snapshot. */
-    fun update(pixels: Iterable<GeneratorMapPixel>) {
-        val snapshot = pixels.toList()
-        require(snapshot.all { it.x in 0..127 && it.z in 0..127 }) {
-            "Generator map pixels must be within 0..127"
+    /** Replaces the icon layer with a detached copy of the supplied ready snapshot. */
+    fun update(icons: Iterable<GeneratorMapIcon>) {
+        val snapshot = icons.toList()
+        require(snapshot.all { it.x in -128..127 && it.z in -128..127 }) {
+            "Generator map cursors must be within -128..127"
         }
-        this.pixels = snapshot
+        this.icons = snapshot
     }
 
     override fun render(map: MapView, canvas: MapCanvas, player: Player) {
-        val current = pixels.associate { pixel -> pixel.z * 128 + pixel.x to pixel.color }
+        val current = icons.associateBy { it }
         val previous = renderedByCanvas[canvas].orEmpty()
+        val cursors = canvas.cursors
 
-        (previous.keys - current.keys).forEach { index ->
-            canvas.setPixelColor(index % 128, index / 128, null)
+        (previous.keys - current.keys).forEach { icon ->
+            cursors.removeCursor(previous.getValue(icon))
         }
-        current.forEach { (index, color) ->
-            if (previous[index] != color) {
-                canvas.setPixelColor(index % 128, index / 128, color.mapColor())
-            }
+        val rendered = current.mapValues { (icon, _) ->
+            previous[icon] ?: cursors.addCursor(
+                MapCursor(icon.x.toByte(), icon.z.toByte(), 0, icon.type.cursorType(), true)
+            )
         }
-        renderedByCanvas[canvas] = current
+        renderedByCanvas[canvas] = rendered
     }
 
-    private fun GeneratorPointColor.mapColor(): Color = when (this) {
-        GeneratorPointColor.YELLOW -> Color.YELLOW
-        GeneratorPointColor.CYAN -> Color.CYAN
-        GeneratorPointColor.RED -> Color.RED
-        GeneratorPointColor.WHITE -> Color.WHITE
+    private fun GeneratorType.cursorType(): MapCursor.Type = when (this) {
+        GeneratorType.ITEM_GENERATOR -> MapCursor.Type.BANNER_YELLOW
+        GeneratorType.BOOK_GENERATOR -> MapCursor.Type.BANNER_CYAN
+        GeneratorType.NETHER_GENERATOR -> MapCursor.Type.BANNER_RED
     }
 }
 
