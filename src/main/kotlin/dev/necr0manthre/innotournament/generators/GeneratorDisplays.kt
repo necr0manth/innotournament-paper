@@ -105,7 +105,7 @@ class GeneratorDisplays(private val items: GeneratorItems) : AutoCloseable {
     private fun animate(shown: Shown) {
         val count = shown.slots.count { it != null }
         if (count == 0) return
-        val tick = shown.world.fullTime
+        val tick = shown.world.gameTime
         val time = tick.toDouble()
         var visualIndex = 0
         shown.slots.forEachIndexed { index, display ->
