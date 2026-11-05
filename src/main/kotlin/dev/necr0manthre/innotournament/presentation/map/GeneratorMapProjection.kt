@@ -24,22 +24,20 @@ fun mapScaleForBorderSide(sideLength: Double): Int {
     return scale
 }
 
-enum class GeneratorPointColor { YELLOW, CYAN, RED, WHITE }
+/** A native map icon positioned relative to the center of its map. */
+data class GeneratorMapIcon(val x: Int, val z: Int, val type: GeneratorType)
 
-/** A pixel in the marker layer; WHITE represents multiple generator types at one pixel. */
-data class GeneratorMapPixel(val x: Int, val z: Int, val color: GeneratorPointColor)
-
-/** Pure coordinate and marker-layer calculations; it never reads a world or loads a chunk. */
+/** Pure coordinate and icon calculations; it never reads a world or loads a chunk. */
 object GeneratorMapProjection {
     private const val MAP_CENTER = 64
 
-    /** Returns null for another world or a point outside this map's 128×128 terrain grid. */
-    fun pixel(position: GeneratorPosition, area: MapAreaKey): Pair<Int, Int>? {
+    /** Returns a map cursor coordinate, or null for another world or a point outside this map. */
+    fun cursor(position: GeneratorPosition, area: MapAreaKey): Pair<Int, Int>? {
         if (position.worldId != area.worldId) return null
         val blockScale = 1 shl area.scale
         val x = Math.floorDiv(position.x, blockScale).toLong() - area.centerX / blockScale + MAP_CENTER
         val z = Math.floorDiv(position.z, blockScale).toLong() - area.centerZ / blockScale + MAP_CENTER
-        return if (x in 0L..127L && z in 0L..127L) x.toInt() to z.toInt() else null
+        return if (x in 0L..127L && z in 0L..127L) (x.toInt() - MAP_CENTER) * 2 to (z.toInt() - MAP_CENTER) * 2 else null
     }
 
     /** Vanilla's Nether map cursor conversion, including its float rounding stages. */
@@ -53,24 +51,12 @@ object GeneratorMapProjection {
         }
     }
 
-    /** One marker per pixel; same-type placements merge and mixed types become white. */
-    fun markerLayer(keys: Iterable<GeneratorKey>, area: MapAreaKey): List<GeneratorMapPixel> {
-        val colors = LinkedHashMap<Pair<Int, Int>, GeneratorPointColor>()
+    /** Projects each placement to a centered native icon coordinate, retaining coincident types. */
+    fun icons(keys: Iterable<GeneratorKey>, area: MapAreaKey): List<GeneratorMapIcon> =
         keys.sortedWith(compareBy<GeneratorKey>({ it.position.z }, { it.position.x }, { it.position.y }, { it.type.ordinal }))
-            .forEach { key ->
-                val pixel = pixel(key.position, area) ?: return@forEach
-                val color = key.type.pointColor()
-                val previous = colors[pixel]
-                colors[pixel] = if (previous == null || previous == color) color else GeneratorPointColor.WHITE
+            .mapNotNull { key ->
+                val position = cursor(key.position, area) ?: return@mapNotNull null
+                GeneratorMapIcon(position.first, position.second, key.type)
             }
-        return colors.entries
-            .sortedWith(compareBy({ it.key.second }, { it.key.first }))
-            .map { (pixel, color) -> GeneratorMapPixel(pixel.first, pixel.second, color) }
-    }
-
-    private fun GeneratorType.pointColor(): GeneratorPointColor = when (this) {
-        GeneratorType.ITEM_GENERATOR -> GeneratorPointColor.YELLOW
-        GeneratorType.BOOK_GENERATOR -> GeneratorPointColor.CYAN
-        GeneratorType.NETHER_GENERATOR -> GeneratorPointColor.RED
-    }
+            .distinct()
 }

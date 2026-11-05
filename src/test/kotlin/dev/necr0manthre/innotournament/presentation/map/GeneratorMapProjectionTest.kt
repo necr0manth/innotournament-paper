@@ -24,14 +24,14 @@ class GeneratorMapProjectionTest {
     }
 
     @Test
-    fun `pixel projection matches vanilla floor and truncation around shifted negative centers`() {
+    fun `cursor projection matches map scale around shifted negative centers`() {
         val area = MapAreaKey(world, 27, -27, 4)
-        assertEquals(64 to 63, GeneratorMapProjection.pixel(position(16, -17), area))
-        assertEquals(65 to 64, GeneratorMapProjection.pixel(position(32, -1), area))
-        assertEquals(0 to 0, GeneratorMapProjection.pixel(position(-1024, -1024), MapAreaKey(world, 0, 0, 4)))
-        assertEquals(127 to 127, GeneratorMapProjection.pixel(position(1008, 1008), MapAreaKey(world, 0, 0, 4)))
-        assertNull(GeneratorMapProjection.pixel(position(1024, 0), MapAreaKey(world, 0, 0, 4)))
-        assertNull(GeneratorMapProjection.pixel(position(16, -17, otherWorld), area))
+        assertEquals(0 to -2, GeneratorMapProjection.cursor(position(16, -17), area))
+        assertEquals(2 to 0, GeneratorMapProjection.cursor(position(32, -1), area))
+        assertEquals(-128 to -128, GeneratorMapProjection.cursor(position(-1024, -1024), MapAreaKey(world, 0, 0, 4)))
+        assertEquals(126 to 126, GeneratorMapProjection.cursor(position(1008, 1008), MapAreaKey(world, 0, 0, 4)))
+        assertNull(GeneratorMapProjection.cursor(position(1024, 0), MapAreaKey(world, 0, 0, 4)))
+        assertNull(GeneratorMapProjection.cursor(position(16, -17, otherWorld), area))
     }
 
     @Test
@@ -47,7 +47,7 @@ class GeneratorMapProjectionTest {
     }
 
     @Test
-    fun `marker layer merges same types and renders mixed types white`() {
+    fun `icon layer preserves each type and excludes other worlds`() {
         val area = MapAreaKey(world, 0, 0, 4)
         val keys = listOf(
             key(1, 1, GeneratorType.ITEM_GENERATOR),
@@ -62,12 +62,13 @@ class GeneratorMapProjectionTest {
 
         assertEquals(
             listOf(
-                GeneratorMapPixel(64, 64, GeneratorPointColor.WHITE),
-                GeneratorMapPixel(65, 64, GeneratorPointColor.YELLOW),
-                GeneratorMapPixel(65, 65, GeneratorPointColor.CYAN),
-                GeneratorMapPixel(66, 66, GeneratorPointColor.RED)
+                GeneratorMapIcon(2, 0, GeneratorType.ITEM_GENERATOR),
+                GeneratorMapIcon(0, 0, GeneratorType.ITEM_GENERATOR),
+                GeneratorMapIcon(0, 0, GeneratorType.NETHER_GENERATOR),
+                GeneratorMapIcon(2, 2, GeneratorType.BOOK_GENERATOR),
+                GeneratorMapIcon(4, 4, GeneratorType.NETHER_GENERATOR)
             ),
-            GeneratorMapProjection.markerLayer(keys, area)
+            GeneratorMapProjection.icons(keys, area)
         )
     }
 
