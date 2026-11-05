@@ -202,6 +202,51 @@ class TournamentTickTest {
         }
     }
 
+    @Test
+    fun losingLastLifeEndsTournamentOnTheNextTickAndAwardsTheBonusOnce() {
+        val previousServer = setServer(onlineServer { false })
+        try {
+            val manager = PluginTeam.TeamManager()
+            val lastLifeOwner = PluginPlayer.get(UUID.randomUUID())
+            val lastLifeTeam = createTeam(manager, lastLifeOwner, "last-life")
+            val winnerOwner = PluginPlayer.get(UUID.randomUUID())
+            val winnerTeam = createTeam(manager, winnerOwner, "winner")
+            val tournament = testTournament(manager, lastTeamScore = 7f)
+            setPhase(tournament, TournamentPhase.STARTED)
+            tournament.checkTeam(lastLifeTeam)
+            tournament.checkTeam(winnerTeam)
+            val lastLifePlayer = checkNotNull(tournament.getPlayer(lastLifeOwner))
+            val winner = checkNotNull(tournament.getPlayer(winnerOwner))
+            markPrepared(lastLifePlayer)
+            markPrepared(winner)
+            lastLifePlayer.setLives(1)
+            winner.setLives(1)
+            activateTournamentPresentationForTest(tournament)
+
+            invokeServerTick(tournament)
+            assertEquals(TournamentPhase.STARTED, tournament.phase)
+
+            var endEvents = 0
+            tournament.onEnd.subscribe { endEvents++ }
+            Tournament::class.java.getDeclaredMethod("handlePlayerDeath", PluginPlayer::class.java)
+                .apply { isAccessible = true }.invoke(tournament, lastLifeOwner)
+            assertEquals(0, lastLifePlayer.lives)
+            assertEquals(TournamentPhase.STARTED, tournament.phase)
+
+            invokeServerTick(tournament)
+
+            assertEquals(TournamentPhase.ENDED, tournament.phase)
+            assertEquals(1, endEvents)
+            assertEquals(7.0, checkNotNull(tournament.getTeam(winnerTeam)).score)
+            assertEquals(setOf(winnerTeam.id), checkNotNull(tournament.result).winnerTeamIds)
+            invokeServerTick(tournament)
+            assertEquals(1, endEvents)
+            assertEquals(7.0, checkNotNull(tournament.getTeam(winnerTeam)).score)
+        } finally {
+            restoreServer(previousServer)
+        }
+    }
+
     private fun tournament(manager: PluginTeam.TeamManager = PluginTeam.TeamManager()) = testTournament(manager)
 
     private fun createTeam(manager: PluginTeam.TeamManager, owner: PluginPlayer, id: String) =
