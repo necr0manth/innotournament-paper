@@ -7,7 +7,9 @@ import org.bukkit.entity.Display
 import org.bukkit.entity.ItemDisplay
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
-import org.joml.Matrix4f
+import org.bukkit.util.Transformation
+import org.joml.Quaternionf
+import org.joml.Vector3f
 import kotlin.math.PI
 import kotlin.math.max
 import kotlin.math.sin
@@ -29,6 +31,7 @@ class GeneratorDisplays(private val items: GeneratorItems) : AutoCloseable {
         val body: ItemDisplay
     ) {
         val slots = arrayOfNulls<ItemDisplay>(10)
+        val animatedAt = LongArray(10) { Long.MIN_VALUE }
     }
 
     /** Render a detached domain snapshot; repeated calls for the same key reuse the displays. */
@@ -65,12 +68,14 @@ class GeneratorDisplays(private val items: GeneratorItems) : AutoCloseable {
                 stack == null && old != null -> {
                     old.remove()
                     shown.slots[index] = null
+                    shown.animatedAt[index] = Long.MIN_VALUE
                 }
                 stack != null && old == null -> {
                     val base = Location(world, position.x + 0.5, position.y + height(key.type), position.z + 0.5)
                     shown.slots[index] = spawn(
                         world, base, position, role, stack, ItemDisplay.ItemDisplayTransform.GROUND
                     )
+                    shown.animatedAt[index] = Long.MIN_VALUE
                 }
                 stack != null && old != null && old.itemStack != stack -> old.setItemStack(stack.clone())
             }
@@ -100,28 +105,42 @@ class GeneratorDisplays(private val items: GeneratorItems) : AutoCloseable {
     private fun animate(shown: Shown) {
         val count = shown.slots.count { it != null }
         if (count == 0) return
-        val time = shown.world.fullTime.toDouble()
+        val tick = shown.world.gameTime
+        val time = tick.toDouble()
         var visualIndex = 0
-        shown.slots.forEach { display ->
-            if (display == null) return@forEach
-            // Compact occupied slots around the ring; empty holes must not overlap items.
+        shown.slots.forEachIndexed { index, display ->
+            if (display == null) return@forEachIndexed
+            // Keep a compact ordinal even when this display was already updated this tick.
             val ordinal = visualIndex++
+            if (shown.animatedAt[index] == tick) return@forEachIndexed
+            shown.animatedAt[index] = tick
+            // Compact occupied slots around the ring; empty holes must not overlap items.
             val bob = (sin(time / 8.0 + 2.0 * PI * ordinal / count) * 0.1).toFloat()
+            val angle = time % 360.0 + if (count == 1) 0.0 else ordinal * 360.0 / count
+            val rotation = Math.toRadians(angle).toFloat()
             val transform = if (count == 1) {
-                Matrix4f()
-                    .rotateY(Math.toRadians(time % 360.0).toFloat())
-                    .translate(0f, bob, 0f)
+                Transformation(
+                    Vector3f(0f, bob, 0f),
+                    Quaternionf().rotationY(rotation),
+                    Vector3f(1f),
+                    Quaternionf()
+                )
             } else {
                 val scale = max(1.15f - 0.15f * count, 0.6f)
-                Matrix4f()
-                    .rotateY(Math.toRadians(time % 360.0 + ordinal * 360.0 / count).toFloat())
-                    .translate(0.5f, 0f, 0f)
-                    .rotateY(Math.toRadians(time * 4.0 % 360.0).toFloat())
-                    .scale(scale)
-                    .translate(0f, bob, 0f)
+                val orbit = Math.toRadians(angle)
+                Transformation(
+                    Vector3f(
+                        (0.5 * kotlin.math.cos(orbit)).toFloat(),
+                        bob * scale,
+                        (-0.5 * kotlin.math.sin(orbit)).toFloat()
+                    ),
+                    Quaternionf().rotationY(Math.toRadians(angle + time * 4.0 % 360.0).toFloat()),
+                    Vector3f(scale),
+                    Quaternionf()
+                )
             }
-            // Original ItemGeneratorRenderer used GROUND context and the same transform order.
-            display.setTransformationMatrix(transform)
+            // Keep rotation, scale, and translation in the native display transform components.
+            display.transformation = transform
             display.setInterpolationDelay(0)
             display.setInterpolationDuration(1)
         }
@@ -144,7 +163,9 @@ class GeneratorDisplays(private val items: GeneratorItems) : AutoCloseable {
         display.setItemDisplayTransform(transform)
         display.setItemStack(item.clone())
         // ItemDisplay NONE renders the 0..16 block-model cube centered on this block center.
-        if (role == "body") display.setTransformationMatrix(Matrix4f())
+        if (role == "body") {
+            display.transformation = Transformation(Vector3f(), Quaternionf(), Vector3f(1f), Quaternionf())
+        }
     }
 
     private fun height(type: GeneratorType): Double = when (type) {
