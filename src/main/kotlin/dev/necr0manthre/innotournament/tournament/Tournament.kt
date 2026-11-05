@@ -289,7 +289,6 @@ class Tournament(
         private set
     val gameWorld: World get() = environment.gameWorld
     private var stageTick = 0L
-    private var hasHadTwoAliveTeams = false
     private val preStartEventInstances = mutableSetOf<TournamentEventInstance<*>>()
     private val mainEventInstances = mutableSetOf<TournamentEventInstance<*>>()
     private val removedEvents = mutableSetOf<TournamentEventInstance<*>>()
@@ -369,7 +368,6 @@ class Tournament(
         Bukkit.getOnlinePlayers().forEach(::prepareStartedPlayer)
         phase = TournamentPhase.STARTED
         stageTick = 0L
-        updateFinishEligibility()
         Bukkit.getOnlinePlayers().forEach(::checkPlayer)
         onStartEvent.invoke(Unit)
         afterSuccessfulStart(this)
@@ -406,12 +404,10 @@ class Tournament(
     fun checkAllTeams() {
         if (phase != TournamentPhase.STARTED) return
         initializeTeamsAndPlayers()
-        updateFinishEligibility()
     }
 
     fun checkTeam(team: PluginTeam) {
         checkTeam(team, resetAcceptAll = true)
-        updateFinishEligibility()
     }
 
     private fun checkTeam(team: PluginTeam, resetAcceptAll: Boolean) {
@@ -467,7 +463,6 @@ class Tournament(
         val previous = player.lives
         player.setLivesInternally(value)
         if (previous > 0 && value == 0) playerRunOutOfLivesEvent.invoke(player)
-        updateFinishEligibility()
     }
 
     private fun requireCanonicalPlayer(player: TournamentPlayer) {
@@ -535,7 +530,6 @@ class Tournament(
             require(ratio.isFinite() && updated.isFinite()) { "Calculated score must be finite" }
             (team as TournamentTeamImpl).scoreValue = updated
         }
-        updateFinishEligibility()
         event.player.player?.let(::checkPlayer)
     }
 
@@ -548,7 +542,6 @@ class Tournament(
             clearPlayer(event.player, event.team)
             event.player.player?.gameMode = GameMode.SPECTATOR
         }
-        updateFinishEligibility()
         // Leaving never changes the historical score of the departing team.
     }
 
@@ -558,7 +551,6 @@ class Tournament(
         // Keep the accumulated TournamentTeam in the result set, but release
         // the permanently disposed team's live back-reference.
         clearTeamState(team)
-        updateFinishEligibility()
     }
 
     private fun getOrCreateTournamentTeam(team: PluginTeam): TournamentTeam? {
@@ -764,7 +756,7 @@ class Tournament(
         if (phase != TournamentPhase.STARTED) return
 
         val aliveTeams = aliveTeams()
-        if (!hasHadTwoAliveTeams || aliveTeams.size > 1) return
+        if (aliveTeams.size > 1) return
 
         finishNormally(aliveTeams.singleOrNull())
     }
@@ -828,11 +820,10 @@ class Tournament(
     }
 
     private fun aliveTeams(): List<TournamentTeam> = teams.filter { team ->
-        teamManager.getTeamById(team.id) === team.pluginTeam && team.players.any { it.lives > 0 }
-    }
-
-    private fun updateFinishEligibility() {
-        if (phase == TournamentPhase.STARTED && aliveTeams().size >= 2) hasHadTwoAliveTeams = true
+        teamManager.getTeamById(team.id) === team.pluginTeam && team.players.any { player ->
+            player.prepared && player.lives > 0 && player.player != null &&
+                getPlayer(player.pluginPlayer) === player && player.team === team
+        }
     }
 
     private fun registerTeamEventListeners() {
