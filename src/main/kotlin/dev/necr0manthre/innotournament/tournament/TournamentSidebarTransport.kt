@@ -1,5 +1,6 @@
 package dev.necr0manthre.innotournament.tournament
 
+import io.papermc.paper.scoreboard.numbers.NumberFormat
 import net.kyori.adventure.text.Component
 import org.bukkit.entity.Player
 import org.bukkit.scoreboard.Criteria
@@ -48,6 +49,7 @@ class TournamentSidebarTransport(private val scoreboardManager: ScoreboardManage
             viewer = Viewer(player, previous, personal)
             viewers[id] = viewer
             viewer.objective = personal.registerNewObjective(OBJECTIVE_NAME, Criteria.DUMMY, title)
+            viewer.objective!!.numberFormat(NumberFormat.blank())
             viewer.objective!!.displaySlot = DisplaySlot.SIDEBAR
             updateRows(viewer, lines)
             viewer.title = title

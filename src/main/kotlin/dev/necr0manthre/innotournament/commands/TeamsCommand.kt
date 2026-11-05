@@ -21,6 +21,7 @@ import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.format.TextDecoration
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.Bukkit
+import org.bukkit.OfflinePlayer
 import org.bukkit.entity.Player
 
 class TeamsCommand(private val teamManager: TeamManager, private val invites: InviteSystem) {
@@ -691,13 +692,25 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
 
     private fun getTargetPlayer(ctx: CommandContext<CommandSourceStack>): PluginPlayer? {
         val name = StringArgumentType.getString(ctx, "player")
-        val target = Bukkit.getPlayerExact(name)
-            ?: Bukkit.getOfflinePlayerIfCached(name)
-            ?: Bukkit.getOfflinePlayers().firstOrNull { it.name?.equals(name, ignoreCase = true) == true }
+        val target = findPlayerByName(name)
         if (target != null) return PluginPlayer.get(target.uniqueId)
 
         ctx.source.sender.sendMessage(Component.text("Player not found in local server data", NamedTextColor.RED))
         return null
+    }
+
+    private fun findPlayerByName(name: String): OfflinePlayer? {
+        val online = Bukkit.getOnlinePlayers().firstOrNull { it.name == name }
+            ?: Bukkit.getPlayerExact(name)
+        if (online != null) return online
+
+        val cached = Bukkit.getOfflinePlayerIfCached(name)
+        if (cached?.name == name) return cached
+
+        val history = Bukkit.getOfflinePlayers()
+        return history.firstOrNull { it.name == name }
+            ?: cached
+            ?: history.firstOrNull { it.name?.equals(name, ignoreCase = true) == true }
     }
 
     private fun idFromDisplayName(displayName: Component): String {

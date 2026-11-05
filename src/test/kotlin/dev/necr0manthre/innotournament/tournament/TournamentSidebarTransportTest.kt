@@ -1,5 +1,6 @@
 package dev.necr0manthre.innotournament.tournament
 
+import io.papermc.paper.scoreboard.numbers.NumberFormat
 import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.Server
@@ -52,6 +53,7 @@ class TournamentSidebarTransportTest {
         try {
             fixture.transport.display(player, Component.text("title"), listOf(first, second, third))
             val objective = fixture.objectives.single()
+            assertEquals(NumberFormat.blank(), objective.numberFormat)
             assertEquals(3, objective.scores.values.sumOf { it.customNameCount })
             assertEquals(3, objective.scores.values.sumOf { it.scoreSetCount })
 
@@ -126,9 +128,11 @@ class TournamentSidebarTransportTest {
 
         inner class ObjectiveProxy {
             val scores = mutableMapOf<String, ScoreProxy>()
+            var numberFormat: NumberFormat? = null
             var unregisterCount = 0
             val proxy: Objective = this@Fixture.proxy { method, args ->
                 when (method) {
+                    "numberFormat" -> { numberFormat = args!!.single() as NumberFormat; null }
                     "setDisplaySlot", "displayName" -> null
                     "getScore" -> scores.getOrPut(args!!.single() as String) { ScoreProxy() }.proxy
                     "getScoreboard" -> if (unregisterCount == 0) AnyScoreboard else null

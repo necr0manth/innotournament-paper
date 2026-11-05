@@ -66,7 +66,8 @@ object InnoGiveCommand {
         }
 
         val name = StringArgumentType.getString(ctx, "player")
-        val player = Bukkit.getPlayerExact(name)
+        val player = Bukkit.getOnlinePlayers().firstOrNull { it.name == name }
+            ?: Bukkit.getPlayerExact(name)
             ?: return error(ctx, "Player '$name' is not online. Use an online player's exact name.")
 
         // The factory supplies both authoritative PDC keys and the visual selector on a fresh stack.
