@@ -158,45 +158,171 @@ class TournamentTickTest {
     }
 
     @Test
-    fun finishRequiresTwoAliveTeamsToHaveCoexisted() {
-        val previousServer = setServer(onlineServer { false })
+    fun oneOnlineAliveTeamFinishesOnTheNextTickWithoutNeedingTwoTeamsFirst() {
+        val previousServer = setServer(onlineServer())
         try {
             val manager = PluginTeam.TeamManager()
             val oneOwner = PluginPlayer.get(UUID.randomUUID())
             val oneTeam = createTeam(manager, oneOwner, "only-one")
-            val oneTournament = tournament(manager)
-            setPhase(oneTournament, TournamentPhase.STARTED)
-            oneTournament.checkTeam(oneTeam)
-            invokeServerTick(oneTournament)
-            assertEquals(TournamentPhase.STARTED, oneTournament.phase)
+            val tournament = testTournament(manager, lastTeamScore = 7f)
+            setPhase(tournament, TournamentPhase.STARTED)
+            tournament.checkTeam(oneTeam)
+            val onePlayer = checkNotNull(tournament.getPlayer(oneOwner))
+            markPrepared(onePlayer)
+            onePlayer.setLives(1)
+            activateTournamentPresentationForTest(tournament)
 
-            val twoOwner = PluginPlayer.get(UUID.randomUUID())
-            val twoTeam = createTeam(manager, twoOwner, "was-two")
+            var endEvents = 0
+            tournament.onEnd.subscribe { endEvents++ }
+            invokeServerTick(tournament)
+
+            assertEquals(TournamentPhase.ENDED, tournament.phase)
+            assertEquals(1, endEvents)
+            assertEquals(setOf(oneTeam.id), checkNotNull(tournament.result).winnerTeamIds)
+            assertEquals(oneTeam.id, checkNotNull(tournament.result).lastAliveTeamId)
+            assertEquals(7.0, checkNotNull(tournament.getTeam(oneTeam)).score)
+            val endedTick = stageTick(tournament)
+            invokeServerTick(tournament)
+            assertEquals(endedTick, stageTick(tournament))
+            assertEquals(1, endEvents)
+        } finally {
+            restoreServer(previousServer)
+        }
+    }
+
+    @Test
+    fun onlyOnlineAliveTeamWinsWhenOpponentDisconnectsAndOfflineLivesRemain() {
+        val onlineIds = mutableSetOf<UUID>()
+        val previousServer = setServer(onlineServer { it in onlineIds })
+        try {
+            val manager = PluginTeam.TeamManager()
+            val winnerOwner = PluginPlayer.get(UUID.randomUUID())
+            val winnerTeam = createTeam(manager, winnerOwner, "online-winner")
+            val offlineOwner = PluginPlayer.get(UUID.randomUUID())
+            val offlineTeam = createTeam(manager, offlineOwner, "offline-opponent")
+            val tournament = testTournament(manager, lastTeamScore = 7f)
+            setPhase(tournament, TournamentPhase.STARTED)
+            tournament.checkTeam(winnerTeam)
+            tournament.checkTeam(offlineTeam)
+            val winner = checkNotNull(tournament.getPlayer(winnerOwner))
+            val offlineOpponent = checkNotNull(tournament.getPlayer(offlineOwner))
+            markPrepared(winner)
+            markPrepared(offlineOpponent)
+            winner.setLives(1)
+            offlineOpponent.setLives(2)
+            onlineIds.addAll(setOf(winnerOwner.uuid, offlineOwner.uuid))
+            activateTournamentPresentationForTest(tournament)
+            invokeServerTick(tournament)
+            assertEquals(TournamentPhase.STARTED, tournament.phase)
+
+            onlineIds.remove(offlineOwner.uuid)
+            var endEvents = 0
+            tournament.onEnd.subscribe { endEvents++ }
+            invokeServerTick(tournament)
+
+            assertEquals(TournamentPhase.ENDED, tournament.phase)
+            assertEquals(2, offlineOpponent.lives)
+            assertEquals(setOf(winnerTeam.id), checkNotNull(tournament.result).winnerTeamIds)
+            assertEquals(winnerTeam.id, checkNotNull(tournament.result).lastAliveTeamId)
+            assertEquals(7.0, checkNotNull(tournament.getTeam(winnerTeam)).score)
+            assertEquals(1, endEvents)
+
+            onlineIds.add(offlineOwner.uuid)
+            invokeServerTick(tournament)
+            assertEquals(1, endEvents)
+            assertEquals(2, offlineOpponent.lives)
+            assertEquals(7.0, checkNotNull(tournament.getTeam(winnerTeam)).score)
+        } finally {
+            restoreServer(previousServer)
+        }
+    }
+
+    @Test
+    fun twoTeamsWithOnlineAlivePlayersDoNotFinish() {
+        val onlineIds = mutableSetOf<UUID>()
+        val previousServer = setServer(onlineServer { it in onlineIds })
+        try {
+            val manager = PluginTeam.TeamManager()
+            val firstOwner = PluginPlayer.get(UUID.randomUUID())
+            val firstTeam = createTeam(manager, firstOwner, "first-online")
             val secondOwner = PluginPlayer.get(UUID.randomUUID())
-            val secondTeam = createTeam(manager, secondOwner, "second-alive")
-            val twoTournament = tournament(manager)
-            setPhase(twoTournament, TournamentPhase.STARTED)
-            twoTournament.checkTeam(twoTeam)
-            twoTournament.checkTeam(secondTeam)
-            activateTournamentPresentationForTest(twoTournament)
-            invokeServerTick(twoTournament)
-            assertEquals(TournamentPhase.STARTED, twoTournament.phase)
+            val secondTeam = createTeam(manager, secondOwner, "second-online")
+            onlineIds.addAll(setOf(firstOwner.uuid, secondOwner.uuid))
+            val tournament = tournament(manager)
+            setPhase(tournament, TournamentPhase.STARTED)
+            tournament.checkTeam(firstTeam)
+            tournament.checkTeam(secondTeam)
+            markPrepared(checkNotNull(tournament.getPlayer(firstOwner)))
+            markPrepared(checkNotNull(tournament.getPlayer(secondOwner)))
+            activateTournamentPresentationForTest(tournament)
 
-            assertTrue(secondTeam.tryKickPlayerFromTeam(secondOwner).isSuccess)
-            invokeServerTick(twoTournament)
-            assertEquals(TournamentPhase.ENDED, twoTournament.phase)
+            // A disconnect followed by a reconnect before the server tick does not
+            // remove the team from the current online-alive snapshot.
+            onlineIds.remove(secondOwner.uuid)
+            onlineIds.add(secondOwner.uuid)
+            invokeServerTick(tournament)
 
-            val ticks = mutableListOf<TournamentTick>()
-            twoTournament.ticks.subscribe(ticks::add)
-            val endedTick = stageTick(twoTournament)
-            invokeServerTick(twoTournament)
-            assertEquals(endedTick, stageTick(twoTournament))
-            assertTrue(ticks.isEmpty())
-            Tournament::class.java.getDeclaredField("phase").apply { isAccessible = true }
-                .set(twoTournament, TournamentPhase.REMOVED)
-            invokeServerTick(twoTournament)
-            assertEquals(endedTick, stageTick(twoTournament))
-            assertTrue(ticks.isEmpty())
+            assertEquals(TournamentPhase.STARTED, tournament.phase)
+        } finally {
+            restoreServer(previousServer)
+        }
+    }
+
+    @Test
+    fun onlineTeammateKeepsItsTeamAliveWhenAnotherMemberDisconnects() {
+        val onlineIds = mutableSetOf<UUID>()
+        val previousServer = setServer(onlineServer { it in onlineIds })
+        try {
+            val manager = PluginTeam.TeamManager()
+            val teamOwner = PluginPlayer.get(UUID.randomUUID())
+            val team = createTeam(manager, teamOwner, "teammates")
+            val disconnectedMember = PluginPlayer.get(UUID.randomUUID())
+            assertTrue(team.tryAddPlayerToTeam(disconnectedMember).isSuccess)
+            val opponentOwner = PluginPlayer.get(UUID.randomUUID())
+            val opponentTeam = createTeam(manager, opponentOwner, "opponent")
+            onlineIds.addAll(setOf(teamOwner.uuid, disconnectedMember.uuid, opponentOwner.uuid))
+
+            val tournament = tournament(manager)
+            setPhase(tournament, TournamentPhase.STARTED)
+            tournament.checkTeam(team)
+            tournament.checkTeam(opponentTeam)
+            markPrepared(checkNotNull(tournament.getPlayer(teamOwner)))
+            markPrepared(checkNotNull(tournament.getPlayer(disconnectedMember)))
+            markPrepared(checkNotNull(tournament.getPlayer(opponentOwner)))
+            activateTournamentPresentationForTest(tournament)
+
+            onlineIds.remove(disconnectedMember.uuid)
+            invokeServerTick(tournament)
+
+            assertEquals(TournamentPhase.STARTED, tournament.phase)
+        } finally {
+            restoreServer(previousServer)
+        }
+    }
+
+    @Test
+    fun zeroOnlineAliveTeamsFinishWithoutAwardingALastTeamBonus() {
+        val previousServer = setServer(onlineServer { false })
+        try {
+            val manager = PluginTeam.TeamManager()
+            val firstOwner = PluginPlayer.get(UUID.randomUUID())
+            val firstTeam = createTeam(manager, firstOwner, "offline-first")
+            val secondOwner = PluginPlayer.get(UUID.randomUUID())
+            val secondTeam = createTeam(manager, secondOwner, "offline-second")
+            val tournament = testTournament(manager, lastTeamScore = 7f)
+            setPhase(tournament, TournamentPhase.STARTED)
+            tournament.checkTeam(firstTeam)
+            tournament.checkTeam(secondTeam)
+            markPrepared(checkNotNull(tournament.getPlayer(firstOwner)))
+            markPrepared(checkNotNull(tournament.getPlayer(secondOwner)))
+            activateTournamentPresentationForTest(tournament)
+
+            invokeServerTick(tournament)
+
+            assertEquals(TournamentPhase.ENDED, tournament.phase)
+            assertEquals(null, checkNotNull(tournament.result).lastAliveTeamId)
+            assertEquals(0.0, checkNotNull(tournament.getTeam(firstTeam)).score)
+            assertEquals(0.0, checkNotNull(tournament.getTeam(secondTeam)).score)
         } finally {
             restoreServer(previousServer)
         }
@@ -204,7 +330,7 @@ class TournamentTickTest {
 
     @Test
     fun losingLastLifeEndsTournamentOnTheNextTickAndAwardsTheBonusOnce() {
-        val previousServer = setServer(onlineServer { false })
+        val previousServer = setServer(onlineServer())
         try {
             val manager = PluginTeam.TeamManager()
             val lastLifeOwner = PluginPlayer.get(UUID.randomUUID())
@@ -286,7 +412,7 @@ class TournamentTickTest {
         Bukkit::class.java.getDeclaredField("server").apply { isAccessible = true }.set(null, previous)
     }
 
-    private fun onlineServer(online: () -> Boolean = { true }): Server = Proxy.newProxyInstance(
+    private fun onlineServer(isOnline: (UUID) -> Boolean = { true }): Server = Proxy.newProxyInstance(
         Server::class.java.classLoader,
         arrayOf(Server::class.java)
     ) { _, method, args ->
@@ -306,8 +432,8 @@ class TournamentTickTest {
                     else -> null
                 }
             }
-            "getPlayer" -> if (online()) playerProxy(args!![0] as UUID) else null
-            "getOnlinePlayers" -> if (online()) emptyList<Player>() else emptyList<Player>()
+            "getPlayer" -> (args!![0] as UUID).takeIf(isOnline)?.let(::playerProxy)
+            "getOnlinePlayers" -> emptyList<Player>()
             "getOfflinePlayer" -> offlinePlayerProxy()
             "broadcast" -> 0
             else -> when (method.returnType) {
