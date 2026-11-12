@@ -68,14 +68,14 @@ class GeneratorPlacementObservationsTest {
             assertEquals(listOf(GeneratorPlacementChange.Discovered(first)), changes)
 
             secondChunkCorrupt = false
-            assertEquals(listOf(second), observations.observeLoadedChunks(listOf(0, 1), ::discoverChunk))
+            observations.observeLoadedChunks(listOf(0, 1), ::discoverChunk)
             assertEquals(setOf(0, 1), active)
             assertEquals(listOf(first, second), observations.subscribe { }.also { it.close() }.initial)
             assertEquals(
                 listOf(GeneratorPlacementChange.Discovered(first), GeneratorPlacementChange.Discovered(second)),
                 changes
             )
-            assertEquals(emptyList<GeneratorKey>(), observations.observeLoadedChunks(listOf(0, 1), ::discoverChunk))
+            observations.observeLoadedChunks(listOf(0, 1), ::discoverChunk)
             assertEquals(2, changes.size, "no duplicate observations after rediscovery")
         }
     }

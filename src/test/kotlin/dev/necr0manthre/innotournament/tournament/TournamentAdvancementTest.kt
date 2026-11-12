@@ -68,7 +68,6 @@ class TournamentAdvancementTest {
         assertTrue(teammateProgress.proxy.isDone)
         assertEquals(listOf(sourceEntry), personalBridgeValues.map { it.player })
         assertEquals(listOf(fixture.advancement.key), teamBridgeValues.map { it.advancement?.key })
-        assertEquals(setOf(fixture.advancement.key), fixture.tournament.teams().single().advancements)
 
         teammateProgress.awarded.clear()
         fixture.reconnect(teammate)

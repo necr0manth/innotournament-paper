@@ -97,7 +97,6 @@ class Tournament(
         var scoreValue = 0.0
         override val score: Double get() = scoreValue
         override val deleted: Boolean get() = teamManager.getTeamById(pluginTeam.id) !== pluginTeam
-        override val advancements: Set<NamespacedKey> get() = advancementHandler.advancements(this)
         override val players: List<TournamentPlayer>
             get() = Collections.unmodifiableList(pluginTeam.players.mapNotNull(::getPlayer))
     }
@@ -131,10 +130,6 @@ class Tournament(
             listener?.let { HandlerList.unregisterAll(it) }
             listener = null
         }
-
-        fun advancements(team: TournamentTeam): Set<NamespacedKey> = Collections.unmodifiableSet(
-            LinkedHashSet(teamFacts[team]?.keys.orEmpty())
-        )
 
         private fun handle(event: PlayerAdvancementDoneEvent) {
             if (synchronizing || phase != TournamentPhase.STARTED) return
@@ -280,7 +275,6 @@ class Tournament(
         private set
     var result: TournamentResult? = null
         private set
-    val gameWorld: World get() = environment.gameWorld
     private var stageTick = 0L
     private val preStartEventInstances = mutableSetOf<TournamentEventInstance<*>>()
     private val mainEventInstances = mutableSetOf<TournamentEventInstance<*>>()

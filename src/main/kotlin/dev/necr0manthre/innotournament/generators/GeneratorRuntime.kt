@@ -100,13 +100,6 @@ class GeneratorRuntime(
         return generators.find(key.position) ?: error("Missing registered generator: $key")
     }
 
-    /** Read-only snapshots for map presentation and later bootstrap integration. */
-    fun discovered(): List<GeneratorInstance> = Collections.unmodifiableList(
-        chunks.values.flatMap { it.placements.keys }.map { position ->
-            generators.find(position) ?: error("Missing registered generator at $position")
-        }
-    )
-
     /** Transfer the core's detached stock once; inventory delivery belongs to the event adapter. */
     fun take(key: GeneratorKey): List<ItemStack>? {
         ensureOpen()

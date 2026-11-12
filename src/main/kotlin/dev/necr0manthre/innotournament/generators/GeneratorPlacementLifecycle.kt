@@ -50,14 +50,14 @@ class GeneratorPlacementLifecycle(
     private fun observe(keys: List<GeneratorKey>) = keys.forEach(observations::discovered)
 
     /** Explicit bootstrap entry: only already loaded chunks, never a full world block scan. */
-    fun discoverLoadedWorld(world: World): List<GeneratorKey> {
+    fun discoverLoadedWorld(world: World) {
         requireMainThread()
-        return discoverLoadedWorldOnPrimaryThread(world)
+        discoverLoadedWorldOnPrimaryThread(world)
     }
 
-    private fun discoverLoadedWorldOnPrimaryThread(world: World): List<GeneratorKey> {
+    private fun discoverLoadedWorldOnPrimaryThread(world: World) {
         runtime.ensureOpen() // Fail before reading the world, even when no chunks are loaded.
-        return observations.observeLoadedChunks(world.loadedChunks.asIterable(), runtime::discoverLoadedChunk)
+        observations.observeLoadedChunks(world.loadedChunks.asIterable(), runtime::discoverLoadedChunk)
     }
 
     /** Only a marker in this block's already loaded chunk identifies an owned barrier. */

@@ -517,13 +517,13 @@ private fun verifyTournamentOwnership(manager: TeamManager) {
     check(tournamentTeam.players == listOf(tournamentPlayer))
     check(runCatching { (tournament.teams() as MutableList<*>).clear() }.exceptionOrNull() is UnsupportedOperationException)
 
-    tournamentTeam.addScore(2.0)
-    check(runCatching { tournamentTeam.addScore(Double.NaN) }.isFailure)
-    check(runCatching { tournamentTeam.addScore(Double.POSITIVE_INFINITY) }.isFailure)
+    tournament.addScores(tournamentTeam, 2.0)
+    check(runCatching { tournament.addScores(tournamentTeam, Double.NaN) }.isFailure)
+    check(runCatching { tournament.addScores(tournamentTeam, Double.POSITIVE_INFINITY) }.isFailure)
     check(tournamentTeam.score == 2.0)
-    tournamentTeam.addScore(Double.MAX_VALUE)
+    tournament.addScores(tournamentTeam, Double.MAX_VALUE)
     check(tournamentTeam.score == Double.MAX_VALUE)
-    check(runCatching { tournamentTeam.addScore(Double.MAX_VALUE) }.isFailure)
+    check(runCatching { tournament.addScores(tournamentTeam, Double.MAX_VALUE) }.isFailure)
     check(tournamentTeam.score == Double.MAX_VALUE)
 
     check(team.tryKickPlayerFromTeam(player).isSuccess)
@@ -531,7 +531,7 @@ private fun verifyTournamentOwnership(manager: TeamManager) {
     check(tournamentPlayer.team === tournamentTeam)
     check(tournamentTeam.score == Double.MAX_VALUE)
     check(manager.removeTeam(team))
-    check(runCatching { tournamentTeam.addScore(1.0) }.isFailure)
+    check(runCatching { tournament.addScores(tournamentTeam, 1.0) }.isFailure)
     check(tournamentTeam.score == Double.MAX_VALUE)
 }
 
@@ -545,7 +545,7 @@ private fun verifyJoinScoreGuards(manager: TeamManager) {
         .set(tournament, TournamentPhase.STARTED)
     tournament.checkTeam(team)
     val record = checkNotNull(tournament.getTeam(team))
-    record.addScore(Double.MAX_VALUE)
+    tournament.addScores(record, Double.MAX_VALUE)
     val originalScore = record.score
     check(originalScore.isFinite() && originalScore > 0.0)
 
@@ -573,7 +573,7 @@ private fun verifyJoinScoreGuards(manager: TeamManager) {
         .set(productTournament, TournamentPhase.STARTED)
     productTournament.checkTeam(productTeam)
     val productRecord = checkNotNull(productTournament.getTeam(productTeam))
-    check(runCatching { productRecord.addScore(2.0) }.isFailure)
+    check(runCatching { productTournament.addScores(productRecord, 2.0) }.isFailure)
     check(productRecord.score == 0.0)
     check(manager.removeTeam(productTeam))
 }
@@ -651,7 +651,7 @@ private fun verifyDeletedTeamRanking(manager: TeamManager, activeTeam: PluginTea
     tournament.checkTeam(activeTeam)
     val currentRecord = checkNotNull(tournament.getTeam(activeTeam))
     check(!activeTeam.acceptAll)
-    currentRecord.addScore(25.0)
+    tournament.addScores(currentRecord, 25.0)
 
     val initializeDuringJoin = Tournament::class.java.getDeclaredMethod(
         "checkTeam", PluginTeam::class.java, Boolean::class.javaPrimitiveType
@@ -668,7 +668,7 @@ private fun verifyDeletedTeamRanking(manager: TeamManager, activeTeam: PluginTea
     }
     check(!leadingTeam.acceptAll && tournament.getTeam(leadingTeam) != null)
     val historicalRecord = checkNotNull(tournament.getTeam(leadingTeam))
-    historicalRecord.addScore(100.0)
+    tournament.addScores(historicalRecord, 100.0)
 
     val output = PlainTextComponentSerializer.plainText()
     fun standings() = dev.necr0manthre.innotournament.tournament.withPrimaryTestServer {
@@ -705,7 +705,7 @@ private fun verifyDeletedTeamRanking(manager: TeamManager, activeTeam: PluginTea
             as TeamCreateResult.Created).team
         tournament.checkTeam(replacement)
         val replacementRecord = checkNotNull(tournament.getTeam(replacement))
-        replacementRecord.addScore(10.0)
+        tournament.addScores(replacementRecord, 10.0)
         check(replacement !== leadingTeam && replacementRecord !== historicalRecord)
         check(manager.getTeamById("leader") === replacement)
         check(tournament.getTeam(leadingTeam) == null)

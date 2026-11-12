@@ -84,7 +84,7 @@ class TournamentControlTest {
     private fun tournament() = testTournament(PluginTeam.TeamManager())
 
     private fun setCurrent(control: TournamentControl, tournament: Tournament) {
-        field(control, "currentValue").set(control, tournament)
+        field(control, "current").set(control, tournament)
     }
 
     private fun field(target: Any, name: String) = target.javaClass.getDeclaredField(name).apply { isAccessible = true }

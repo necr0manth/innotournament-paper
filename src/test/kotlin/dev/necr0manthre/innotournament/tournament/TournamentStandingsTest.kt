@@ -41,10 +41,10 @@ class TournamentStandingsTest {
             Tournament::class.java.getDeclaredField("phase").apply { isAccessible = true }
                 .set(tournament, TournamentPhase.STARTED)
             listOf(beta, alpha, empty, deleted).forEach(tournament::checkTeam)
-            tournament.getTeam(beta)!!.addScore(10.0)
-            tournament.getTeam(alpha)!!.addScore(10.0)
-            tournament.getTeam(empty)!!.addScore(4.0)
-            tournament.getTeam(deleted)!!.addScore(100.0)
+            tournament.addScores(tournament.getTeam(beta), 10.0)
+            tournament.addScores(tournament.getTeam(alpha), 10.0)
+            tournament.addScores(tournament.getTeam(empty), 4.0)
+            tournament.addScores(tournament.getTeam(deleted), 100.0)
             check(manager.removeTeam(deleted))
 
             val alphaParticipation = tournament.getTeam(alpha)
@@ -68,7 +68,7 @@ class TournamentStandingsTest {
             }
 
             alpha.tryKickPlayerFromTeam(alphaMember)
-            tournament.getTeam(alpha)!!.addScore(1.0)
+            tournament.addScores(tournament.getTeam(alpha), 1.0)
             assertEquals(10.0, rows.first().score)
             assertEquals(2, rows.first().players.size)
         } finally {

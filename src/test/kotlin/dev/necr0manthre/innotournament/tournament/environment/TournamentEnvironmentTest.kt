@@ -332,7 +332,6 @@ class TournamentEnvironmentTest {
         val first = effects.preStartRespawnLocation()
         val second = effects.preStartRespawnLocation()
         assertNotSame(first, second)
-        assertSame(game.world, effects.gameWorld)
         val gameSpawn = effects.gameSpawnLocation()
         val anotherGameSpawn = effects.gameSpawnLocation()
         assertNotSame(gameSpawn, anotherGameSpawn)

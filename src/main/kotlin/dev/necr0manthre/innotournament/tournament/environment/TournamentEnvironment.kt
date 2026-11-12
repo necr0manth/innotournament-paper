@@ -12,7 +12,6 @@ import org.bukkit.block.BlockFace
 import org.bukkit.block.data.type.Piston
 import org.bukkit.block.structure.Mirror
 import org.bukkit.block.structure.StructureRotation
-import org.bukkit.entity.Entity
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.block.*
@@ -45,9 +44,6 @@ class TournamentEnvironment(
     private var startBox: StartBoxResource? = null
     private var structureTemplate: Structure? = null
     private var structureResolved = false
-
-    val gameWorld: World
-        get() = worlds.gameWorld
 
     init {
         require(preStartSpawn.world === worlds.preStartWorld) { "Pre-start point belongs to another world" }
@@ -378,11 +374,6 @@ class TournamentEnvironment(
         fun contains(block: Block): Boolean = block.world === world &&
             block.x >= minX && block.x < maxX && block.y >= minY && block.y < maxY &&
             block.z >= minZ && block.z < maxZ
-
-        fun contains(entity: Entity): Boolean = entity.world === world &&
-            entity.location.x >= minX && entity.location.x < maxX &&
-            entity.location.y >= minY && entity.location.y < maxY &&
-            entity.location.z >= minZ && entity.location.z < maxZ
     }
 
     private class BoxProtectionListener(private val region: BoxRegion) : Listener {

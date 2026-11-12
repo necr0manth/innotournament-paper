@@ -8,10 +8,10 @@ class TournamentControl(
     private val createTournament: (LoadedTournamentDefinition) -> Tournament
 ) {
     private var selectedPathValue: Path? = null
-    private var currentValue: Tournament? = null
+    var current: Tournament? = null
+        private set
 
     val selectedPath: Path? get() = selectedPathValue
-    val current: Tournament? get() = currentValue
 
     /** Select a definition for the next prepare; this does not affect the current run. */
     fun select(path: Path) {
@@ -24,7 +24,7 @@ class TournamentControl(
 
         val definition = repository.loadForRun(path)
         val tournament = createTournament(definition)
-        currentValue = tournament
+        current = tournament
         try {
             tournament.prepare()
         } catch (failure: Throwable) {
@@ -35,7 +35,7 @@ class TournamentControl(
     }
 
     fun start() {
-        val tournament = checkNotNull(currentValue) { "No current tournament" }
+        val tournament = checkNotNull(current) { "No current tournament" }
         check(tournament.phase == TournamentPhase.PREPARED) { "Tournament is not prepared" }
         try {
             tournament.start()
@@ -50,13 +50,13 @@ class TournamentControl(
     }
 
     private fun removeCurrent(reason: RemovalReason) {
-        val previous = currentValue ?: return
+        val previous = current ?: return
         previous.remove(reason)
-        if (currentValue === previous) currentValue = null
+        if (current === previous) current = null
     }
 
     private fun removeFailed(tournament: Tournament) {
         tournament.remove(RemovalReason.ERROR)
-        if (currentValue === tournament) currentValue = null
+        if (current === tournament) current = null
     }
 }

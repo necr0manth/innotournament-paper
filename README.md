@@ -31,7 +31,7 @@ and tournament state.
 - `PluginPlayer` and `PluginTeam` hold plugin-lifetime player and team state.
 - `TournamentPlayer` and `TournamentTeam` hold participation state for the active tournament.
 - `Tournament` owns the lifecycle, participants, scoring, lives, advancement synchronization, and cleanup.
-- `TournamentData` loads tournament settings and the relative paths of the two event files.
+- `TournamentConfigRepository` loads tournament settings and the relative paths of the two event files.
 - `TournamentEvent` definitions create isolated runtime subscriptions for each tournament.
 - `EventSubscriptionView` exposes event subscriptions without exposing event invocation to consumers.
 
@@ -103,7 +103,7 @@ These commands require the `innotournament.admin` permission.
 
 - `/tournament select <filePath>` - select a JSON file from the tournament directory.
 - `/tournament prepare` - create and prepare the selected tournament.
-- `/tournament start` - prepare the tournament if needed, then start it.
+- `/tournament start` - start the prepared tournament.
 - `/tournament stop` - remove the active tournament and its runtime state.
 - `/tournament set ...` - update one of the six configured spawn, dimension, or start-box settings.
 
@@ -128,7 +128,7 @@ Players with `innotournament.admin` bypass pre-start game-mode enforcement.
 
 ## Current Limitations
 
-- Team and invite state is saved in `teams.json`; active tournament state is not persisted across restarts.
+- Team state is saved in `teams.json`; invitations are transient and expire during runtime. Active tournament state is not persisted across restarts.
 - JourneyMap waypoint delivery is optional and disabled unless `journeymap.enabled` is set to `true` in
   the plugin configuration.
 - Original custom content and a bundled end-to-end tournament configuration are not provided.

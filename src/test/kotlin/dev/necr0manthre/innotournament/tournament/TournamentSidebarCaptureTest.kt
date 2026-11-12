@@ -102,9 +102,9 @@ class TournamentSidebarCaptureTest {
             val blueParticipation = tournament.getTeam(blue)!!
             val redParticipation = tournament.getTeam(red)!!
             val deletedParticipation = tournament.getTeam(deleted)!!
-            blueParticipation.addScore(10.0)
-            redParticipation.addScore(10.0)
-            deletedParticipation.addScore(100.0)
+            tournament.addScores(blueParticipation, 10.0)
+            tournament.addScores(redParticipation, 10.0)
+            tournament.addScores(deletedParticipation, 100.0)
             assertTrue(manager.removeTeam(deleted))
             val onlineParticipation = tournament.getPlayer(online)!!
             markTournamentPlayerPrepared(onlineParticipation)
@@ -133,7 +133,7 @@ class TournamentSidebarCaptureTest {
 
             blue.changeTeamName(Component.text("Changed"))
             blue.tryKickPlayerFromTeam(offline)
-            blueParticipation.addScore(5.0)
+            tournament.addScores(blueParticipation, 5.0)
             onlineParticipation.setLives(2)
             assertEquals(blueSidebar, captured(server.player(onlineId)))
             assertEquals(blueName, blueLines[1].children().first())

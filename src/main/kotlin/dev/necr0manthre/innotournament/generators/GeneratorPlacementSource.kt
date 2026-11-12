@@ -53,14 +53,11 @@ class GeneratorPlacementObservations : GeneratorPlacementSource, AutoCloseable {
     }
 
     /** Publish each completed chunk before discovering the next; a later corrupt chunk may throw. */
-    fun <T> observeLoadedChunks(chunks: Iterable<T>, discoverChunk: (T) -> List<GeneratorKey>): List<GeneratorKey> {
-        val added = ArrayList<GeneratorKey>()
+    fun <T> observeLoadedChunks(chunks: Iterable<T>, discoverChunk: (T) -> List<GeneratorKey>) {
         chunks.forEach { chunk ->
             val keys = discoverChunk(chunk)
             keys.forEach(::discovered)
-            added.addAll(keys)
         }
-        return Collections.unmodifiableList(added)
     }
 
     /** Called only after the runtime has activated a validated PDC placement and its displays. */
