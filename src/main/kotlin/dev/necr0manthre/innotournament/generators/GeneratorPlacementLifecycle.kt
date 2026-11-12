@@ -38,13 +38,13 @@ class GeneratorPlacementLifecycle(
     }
 
     /** Explicit bootstrap entry: only already loaded chunks, never a full world block scan. */
-    fun discoverLoadedWorld(world: World): List<GeneratorKey> {
+    fun discoverLoadedWorld(world: World) {
         requireMainThread()
         return discoverLoadedWorldOnPrimaryThread(world)
     }
 
-    private fun discoverLoadedWorldOnPrimaryThread(world: World): List<GeneratorKey> {
-        return runtime.discoverLoadedWorld(world)
+    private fun discoverLoadedWorldOnPrimaryThread(world: World) {
+        runtime.discoverLoadedWorld(world)
     }
 
     /** Only a marker in this block's already loaded chunk identifies an owned barrier. */
