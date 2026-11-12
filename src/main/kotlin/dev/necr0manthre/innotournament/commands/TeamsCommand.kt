@@ -84,16 +84,7 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                                     return@executes 0
                                 }
 
-                            if (!team.acceptAll && !invites.isPlayerInvitedToTeam(player, team)) {
-                                ctx.source.sender.sendMessage(
-                                    Component.text(
-                                        "You can't join this team",
-                                        NamedTextColor.RED
-                                    )
-                                )
-                                return@executes 0
-                            }
-                            if (!team.tryAddPlayerToTeam(player).isSuccess) {
+                            if (!invites.tryJoinTeam(player, team)) {
                                 ctx.source.sender.sendMessage(
                                     Component.text(
                                         "You can't join this team",
@@ -103,7 +94,6 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                                 return@executes 0
                             }
 
-                            invites.rejectInvite(player, team)
                             sendJoinPlayer(player, team)
                             updateSidebars()
                             Command.SINGLE_SUCCESS
@@ -186,7 +176,7 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                                 return@executes 0
                             }
 
-                            invites.rejectInvite(target, team)
+                            invites.revokeInvite(target, team)
                             ctx.source.sender.sendMessage(
                                 Component.text("You revoked the invitation for ")
                                     .append(target.displayName)
@@ -233,7 +223,11 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                                     }
                                 }
                             }
-                            invites.invitePlayerToTeam(invited, team, 1000)
+                            val invitation = invites.invitePlayerToTeam(invited, team, 1000)
+                            if (invitation == null) {
+                                ctx.source.sender.sendMessage(Component.text("Unable to invite player", NamedTextColor.RED))
+                                return@executes 0
+                            }
                             invited.player?.sendMessage(
                                 Component.empty()
                                     .append(inviter.displayName)
