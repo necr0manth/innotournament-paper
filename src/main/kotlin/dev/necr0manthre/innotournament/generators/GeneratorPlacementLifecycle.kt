@@ -17,9 +17,10 @@ import org.bukkit.event.world.WorldLoadEvent
 import org.bukkit.event.world.WorldUnloadEvent
 
 /**
- * Physical owner for the three placed generators. The plugin registers this listener
+ * Physical owner for the three placed generators. The future bootstrap registers this listener
  * once and calls [discoverLoadedWorld] for each already loaded world. It owns neither the tick
  * task nor any player-interaction/protection listener. All calls are synchronous/main-thread.
+ * Map consumers receive only [GeneratorPlacementSource], not this adapter's mutable state.
  *
  * [find] also activates a stored marker on demand, so a later interaction listener can safely
  * pass its returned key to [GeneratorRuntime.take] or [GeneratorRuntime.reroll].
@@ -28,23 +29,35 @@ class GeneratorPlacementLifecycle(
     private val items: GeneratorItems,
     private val placements: GeneratorPlacementStore,
     private val runtime: GeneratorRuntime
-) : Listener, AutoCloseable {
+) : Listener, GeneratorPlacementSource, AutoCloseable {
+    private val observations = GeneratorPlacementObservations()
     private var closed = false
 
+    /** One main-thread call atomically attaches a view and captures already discovered points. */
+    override fun subscribe(onChange: (GeneratorPlacementChange) -> Unit): GeneratorPlacementSubscription {
+        requireMainThread()
+        return observations.subscribe(onChange)
+    }
+
+    /** Only this adapter's observers are closed; runtime/tickets have a separate owner. */
     override fun close() {
         if (closed) return
         requireMainThread()
         closed = true
+        observations.close()
     }
 
+    private fun observe(keys: List<GeneratorKey>) = keys.forEach(observations::discovered)
+
     /** Explicit bootstrap entry: only already loaded chunks, never a full world block scan. */
-    fun discoverLoadedWorld(world: World) {
+    fun discoverLoadedWorld(world: World): List<GeneratorKey> {
         requireMainThread()
         return discoverLoadedWorldOnPrimaryThread(world)
     }
 
-    private fun discoverLoadedWorldOnPrimaryThread(world: World) {
-        runtime.discoverLoadedWorld(world)
+    private fun discoverLoadedWorldOnPrimaryThread(world: World): List<GeneratorKey> {
+        runtime.ensureOpen() // Fail before reading the world, even when no chunks are loaded.
+        return observations.observeLoadedChunks(world.loadedChunks.asIterable(), runtime::discoverLoadedChunk)
     }
 
     /** Only a marker in this block's already loaded chunk identifies an owned barrier. */
@@ -53,10 +66,11 @@ class GeneratorPlacementLifecycle(
         val chunk = loadedChunk(block)
         val position = position(block)
         val key = placements.find(chunk, position) ?: return null
-        runtime.discoverLoadedChunk(chunk)
+        observe(runtime.discoverLoadedChunk(chunk))
         check(runtime.find(position)?.key == key) {
             "Generator placement is not active after discovery: $key"
         }
+        observations.discovered(key)
         return key
     }
 
@@ -72,6 +86,7 @@ class GeneratorPlacementLifecycle(
         check(runtime.unregister(key)) { "Generator runtime vanished before removal: $key" }
         loadedChunk(block) // ticket release must not turn the final block write into an implicit chunk load.
         block.setType(Material.AIR, false)
+        observations.removed(key)
         return true
     }
 
@@ -90,7 +105,8 @@ class GeneratorPlacementLifecycle(
         val existing = placements.find(chunk, key.position)
         if (existing != null) {
             check(existing == key) { "Generator placement type conflict: stored $existing, placing $key" }
-            runtime.discoverLoadedChunk(chunk) // identical repeated discovery is idempotent.
+            observe(runtime.discoverLoadedChunk(chunk)) // identical repeated observation is idempotent.
+            observations.discovered(key)
             return
         }
         check(block.type == special.material) {
@@ -100,7 +116,8 @@ class GeneratorPlacementLifecycle(
         }
         block.setType(Material.BARRIER, false)
         placements.write(chunk, key)
-        runtime.discoverLoadedChunk(chunk)
+        observe(runtime.discoverLoadedChunk(chunk))
+        observations.discovered(key)
     }
 
     /** A cancelled break or any non-creative attempt is not administrative removal. */
@@ -113,7 +130,7 @@ class GeneratorPlacementLifecycle(
     @EventHandler(priority = EventPriority.MONITOR)
     fun onChunkLoad(event: ChunkLoadEvent) {
         requireMainThread()
-        runtime.discoverLoadedChunk(event.chunk)
+        observe(runtime.discoverLoadedChunk(event.chunk))
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

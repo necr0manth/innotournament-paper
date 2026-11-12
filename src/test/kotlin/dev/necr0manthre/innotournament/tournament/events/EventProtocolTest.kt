@@ -7,6 +7,8 @@ import dev.necr0manthre.innotournament.players.PluginPlayer
 import dev.necr0manthre.innotournament.teams.PluginTeam.TeamManager
 import dev.necr0manthre.innotournament.teams.TeamCreateResult
 import dev.necr0manthre.innotournament.tournament.Tournament
+import dev.necr0manthre.innotournament.tournament.testTournament
+import dev.necr0manthre.innotournament.tournament.markTournamentPlayerPrepared
 import dev.necr0manthre.innotournament.tournament.events.event_data.ISourcePlayerProvider
 import dev.necr0manthre.innotournament.tournament.events.event_data.ITeamProvider
 import dev.necr0manthre.innotournament.tournament.events.event_data.PlayerHolder
@@ -35,11 +37,7 @@ class EventProtocolTest {
         }
     }
 
-    private fun passiveTournament(): Tournament = Tournament(
-        teamManager, Location(null, 0.0, 0.0, 0.0), Location(null, 0.0, 0.0, 0.0),
-        null, Location(null, 0.0, 0.0, 0.0), GameMode.SURVIVAL,
-        EventPlan.of(emptyList()), EventPlan.of(emptyList()), doubleArrayOf(), 0f
-    )
+    private fun passiveTournament(): Tournament = testTournament(teamManager)
 
     private fun load(json: String): EventPlan =
         EventLoader.loadEvents(JsonParser.parseString(json), temp.resolve("events.json"))
@@ -134,26 +132,65 @@ class EventProtocolTest {
         assertTrue(created is TeamCreateResult.Created)
         val team = (created as TeamCreateResult.Created).team
         try {
-            val player = checkNotNull(tournament.getOrCreateTournamentPlayer(pluginPlayer))
+            Tournament::class.java.getDeclaredField("phase").apply { isAccessible = true }
+                .set(tournament, dev.necr0manthre.innotournament.tournament.TournamentPhase.STARTED)
+            tournament.checkTeam(team)
+            val player = checkNotNull(tournament.getPlayer(pluginPlayer))
             val tournamentTeam = checkNotNull(player.team)
-            val listener = checkNotNull(InnoTournamentEventHandlers.SCORE_FROM_LIVES
-                .tryParse("add_score_by_lives 7")).listener
+            val deathHandler = Tournament::class.java.getDeclaredMethod("handlePlayerDeath", PluginPlayer::class.java)
+                .apply { isAccessible = true }
+            deathHandler.invoke(tournament, pluginPlayer)
+            assertEquals(3, player.lives) // An unprepared participation has not begun losing lives.
 
-            player.lives = 1
-            assertThrows(IndexOutOfBoundsException::class.java) {
+            var livesExhaustedCount = 0
+            val exhaustedListener: (dev.necr0manthre.innotournament.tournament.TournamentPlayer) -> Unit = {
+                if (it === player) livesExhaustedCount++
+            }
+            tournament.playerRunOutOfLives.subscribe(exhaustedListener)
+            val listener = checkNotNull(InnoTournamentEventHandlers.SCORE_FROM_LIVES
+                .tryParse("add_score_by_lives 7 8 9 10")).listener
+            assertThrows(IllegalStateException::class.java) {
                 listener.listen(tournament, PlayerHolder(player))
             }
             assertEquals(0.0, tournamentTeam.score)
 
-            player.lives = 0
+            markTournamentPlayerPrepared(player)
+            assertThrows(IllegalArgumentException::class.java) { player.setLives(-1) }
+            assertEquals(3, player.lives)
+            player.setLives(1)
+            deathHandler.invoke(tournament, pluginPlayer)
+            deathHandler.invoke(tournament, pluginPlayer)
+            assertEquals(1, livesExhaustedCount)
+            assertEquals(0, player.lives)
+
             listener.listen(tournament, PlayerHolder(player))
-            assertEquals(7.0, tournamentTeam.score)
+            assertEquals(7.0, tournamentTeam.score) // The configured zero-lives score is indexed directly.
+            player.setLives(3)
+            listener.listen(tournament, PlayerHolder(player))
+            assertEquals(17.0, tournamentTeam.score) // Lives 3 still selects the final configured score.
+            tournament.playerRunOutOfLives.unsubscribe(exhaustedListener)
+            val invalidIndex = checkNotNull(InnoTournamentEventHandlers.SCORE_FROM_LIVES
+                .tryParse("add_score_by_lives 1 2 3")).listener
+
+            assertThrows(IndexOutOfBoundsException::class.java) {
+                invalidIndex.listen(tournament, PlayerHolder(player))
+            }
+            assertEquals(17.0, tournamentTeam.score)
+
+            Tournament::class.java.getDeclaredField("phase").apply { isAccessible = true }
+                .set(tournament, dev.necr0manthre.innotournament.tournament.TournamentPhase.ENDED)
+            assertThrows(IllegalStateException::class.java) { tournament.addScores(tournamentTeam, 1.0) }
+            assertEquals(17.0, tournamentTeam.score)
+            Tournament::class.java.getDeclaredField("phase").apply { isAccessible = true }
+                .set(tournament, dev.necr0manthre.innotournament.tournament.TournamentPhase.STARTED)
 
             assertTrue(team.tryKickPlayerFromTeam(pluginPlayer).isSuccess)
-            assertNull(player.team)
-            player.lives = 1
-            assertDoesNotThrow { listener.listen(tournament, PlayerHolder(player)) }
-            assertEquals(7.0, tournamentTeam.score)
+            assertSame(tournamentTeam, player.team) // The entry retains its join-time team identity.
+            assertNull(tournament.getPlayer(pluginPlayer))
+            assertThrows(IllegalArgumentException::class.java) {
+                listener.listen(tournament, PlayerHolder(player))
+            }
+            assertEquals(17.0, tournamentTeam.score)
         } finally {
             assertTrue(teamManager.removeTeam(team))
         }

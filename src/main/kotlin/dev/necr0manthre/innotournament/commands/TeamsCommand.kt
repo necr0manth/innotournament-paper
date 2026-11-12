@@ -10,7 +10,6 @@ import dev.necr0manthre.innotournament.teams.PluginTeam
 import dev.necr0manthre.innotournament.teams.PluginTeam.TeamManager
 import dev.necr0manthre.innotournament.teams.TeamCreateResult
 import dev.necr0manthre.innotournament.teams.invites.InviteSystem
-import dev.necr0manthre.innotournament.tournament.Tournament
 import dev.necr0manthre.innotournament.util.CommandRegisterer
 import io.papermc.paper.command.brigadier.CommandSourceStack
 import io.papermc.paper.command.brigadier.Commands
@@ -22,6 +21,7 @@ import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.format.TextDecoration
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.Bukkit
+import org.bukkit.OfflinePlayer
 import org.bukkit.entity.Player
 
 class TeamsCommand(private val teamManager: TeamManager, private val invites: InviteSystem) {
@@ -56,7 +56,6 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                                 .append(team.displayName)
                         )
                     }
-                    updateSidebars()
                     Command.SINGLE_SUCCESS
                 }
         )
@@ -84,16 +83,7 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                                     return@executes 0
                                 }
 
-                            if (!team.acceptAll && !invites.isPlayerInvitedToTeam(player, team)) {
-                                ctx.source.sender.sendMessage(
-                                    Component.text(
-                                        "You can't join this team",
-                                        NamedTextColor.RED
-                                    )
-                                )
-                                return@executes 0
-                            }
-                            if (!team.tryAddPlayerToTeam(player).isSuccess) {
+                            if (!invites.tryJoinTeam(player, team)) {
                                 ctx.source.sender.sendMessage(
                                     Component.text(
                                         "You can't join this team",
@@ -103,9 +93,7 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                                 return@executes 0
                             }
 
-                            invites.rejectInvite(player, team)
                             sendJoinPlayer(player, team)
-                            updateSidebars()
                             Command.SINGLE_SUCCESS
                         }
                 )
@@ -145,7 +133,6 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                             ctx.source.sender.sendMessage(
                                 Component.text("Created team ").append(team.displayName)
                             )
-                            updateSidebars()
                             Command.SINGLE_SUCCESS
                         }
                 )
@@ -186,7 +173,7 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                                 return@executes 0
                             }
 
-                            invites.rejectInvite(target, team)
+                            invites.revokeInvite(target, team)
                             ctx.source.sender.sendMessage(
                                 Component.text("You revoked the invitation for ")
                                     .append(target.displayName)
@@ -233,7 +220,11 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                                     }
                                 }
                             }
-                            invites.invitePlayerToTeam(invited, team, 1000)
+                            val invitation = invites.invitePlayerToTeam(invited, team, 1000)
+                            if (invitation == null) {
+                                ctx.source.sender.sendMessage(Component.text("Unable to invite player", NamedTextColor.RED))
+                                return@executes 0
+                            }
                             invited.player?.sendMessage(
                                 Component.empty()
                                     .append(inviter.displayName)
@@ -315,7 +306,6 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                                         return@executes 0
                                     }
 
-                                    updateSidebars()
                                     Command.SINGLE_SUCCESS
                                 }
                         )
@@ -370,7 +360,6 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                                     )
                                 }
                             }
-                            updateSidebars()
                             Command.SINGLE_SUCCESS
                         }
                 )
@@ -413,7 +402,6 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                             target.player?.sendMessage(
                                 Component.text("You are now owner of team ").append(team.displayName)
                             )
-                            updateSidebars()
                             Command.SINGLE_SUCCESS
                         }
                 )
@@ -447,7 +435,6 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                     ctx.source.sender.sendMessage(
                         Component.text("Removed team ").append(team.displayName)
                     )
-                    updateSidebars()
                     Command.SINGLE_SUCCESS
                 }
                 .then(
@@ -472,7 +459,6 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                             ctx.source.sender.sendMessage(
                                 Component.text("Removed team ").append(team.displayName)
                             )
-                            updateSidebars()
                             Command.SINGLE_SUCCESS
                         }
                 )
@@ -685,10 +671,6 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
         return PluginPlayer.get(sender)
     }
 
-    private fun updateSidebars() {
-        Tournament.get()?.updateSidebars()
-    }
-
     private fun <S, T> RequiredArgumentBuilder<S, T>.suggestTeams(): RequiredArgumentBuilder<S, T> {
         return suggests { _, builder ->
             teamManager.getAllTeams().forEach { builder.suggest(it.id) }
@@ -708,13 +690,25 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
 
     private fun getTargetPlayer(ctx: CommandContext<CommandSourceStack>): PluginPlayer? {
         val name = StringArgumentType.getString(ctx, "player")
-        val target = Bukkit.getPlayerExact(name)
-            ?: Bukkit.getOfflinePlayerIfCached(name)
-            ?: Bukkit.getOfflinePlayers().firstOrNull { it.name?.equals(name, ignoreCase = true) == true }
+        val target = findPlayerByName(name)
         if (target != null) return PluginPlayer.get(target.uniqueId)
 
         ctx.source.sender.sendMessage(Component.text("Player not found in local server data", NamedTextColor.RED))
         return null
+    }
+
+    private fun findPlayerByName(name: String): OfflinePlayer? {
+        val online = Bukkit.getOnlinePlayers().firstOrNull { it.name == name }
+            ?: Bukkit.getPlayerExact(name)
+        if (online != null) return online
+
+        val cached = Bukkit.getOfflinePlayerIfCached(name)
+        if (cached?.name == name) return cached
+
+        val history = Bukkit.getOfflinePlayers()
+        return history.firstOrNull { it.name == name }
+            ?: cached
+            ?: history.firstOrNull { it.name?.equals(name, ignoreCase = true) == true }
     }
 
     private fun idFromDisplayName(displayName: Component): String {

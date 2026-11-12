@@ -79,8 +79,8 @@ The repository includes a `runServer` task configured for Paper 26.1.2 with a 2 
 3. Before the first server start, copy the three bundled files in `generators/` to
    `plugins/innotournament-paper/generators/` on the server. The plugin requires all three profiles and
    does not create or modify them.
-4. Start the server once, then create the tournament directory if it does not exist. No tournament
-   configuration is generated automatically.
+4. Start the server once, then create the tournament directory if it does not exist. No configuration is
+   generated automatically.
 5. Place tournament JSON files under:
 
    ```text
@@ -99,12 +99,13 @@ No ready-made tournament configuration is bundled yet.
 
 ### Tournament administration
 
-These commands require the vanilla `minecraft.command.function` permission.
+These commands require the `innotournament.admin` permission.
 
 - `/tournament select <filePath>` - select a JSON file from the tournament directory.
 - `/tournament prepare` - create and prepare the selected tournament.
 - `/tournament start` - prepare the tournament if needed, then start it.
 - `/tournament stop` - remove the active tournament and its runtime state.
+- `/tournament set ...` - update one of the six configured spawn, dimension, or start-box settings.
 
 ### Teams
 
@@ -121,17 +122,16 @@ Players with `innotournament.admin` bypass pre-start game-mode enforcement.
 
 ### Utility
 
+- `/inno give <player> <item> [count]` - give a special generator or dice item (requires `innotournament.admin`).
+- `/inno map` - give the current world's managed map to yourself.
 - `/worldborderinfo` - show the direction and distance to the nearest side of the current world's border.
 
 ## Current Limitations
 
-- Team, player, tournament, and invite state is stored in memory and is not persisted across restarts.
-- Invite expiration is not active because the invite scheduler is not registered yet.
-- The sidebar, pre-start boundary enforcement, repeated-team initialization, and some natural-end listener
-  cleanup paths are still incomplete.
-- Offline participants can keep a team alive, while an empty started tournament ends on its first tick.
-- Original custom content, client networking, and JourneyMap integration have not been ported.
-- No bundled end-to-end tournament configuration is provided yet.
+- Team and invite state is saved in `teams.json`; active tournament state is not persisted across restarts.
+- JourneyMap waypoint delivery is optional and disabled unless `journeymap.enabled` is set to `true` in
+  the plugin configuration.
+- Original custom content and a bundled end-to-end tournament configuration are not provided.
 
 See the [original Architectury implementation](https://github.com/necr0manth/InnoTournament) for the
 pre-port codebase.

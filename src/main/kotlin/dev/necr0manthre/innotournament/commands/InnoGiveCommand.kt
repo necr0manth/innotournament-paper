@@ -7,7 +7,6 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder
 import com.mojang.brigadier.context.CommandContext
 import dev.necr0manthre.innotournament.generators.GeneratorItems
 import dev.necr0manthre.innotournament.generators.SpecialItemType
-import dev.necr0manthre.innotournament.util.CommandRegisterer
 import io.papermc.paper.command.brigadier.CommandSourceStack
 import io.papermc.paper.command.brigadier.Commands
 import net.kyori.adventure.text.Component
@@ -49,13 +48,6 @@ object InnoGiveCommand {
                             )
                     )
             )
-
-    /** Convenience registration when `/inno` has no other subcommands; integration may use [build]. */
-    fun register(registrar: Commands) {
-        val registerer = CommandRegisterer(registrar, "inno")
-        registerer.add(build())
-        registerer.register()
-    }
 
     private fun give(ctx: CommandContext<CommandSourceStack>, count: Int): Int {
         val id = StringArgumentType.getString(ctx, "item")

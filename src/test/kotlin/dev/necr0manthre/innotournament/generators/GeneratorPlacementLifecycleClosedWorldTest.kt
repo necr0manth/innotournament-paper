@@ -44,7 +44,7 @@ class GeneratorPlacementLifecycleClosedWorldTest {
         val discover = GeneratorPlacementLifecycle::class.java.getDeclaredMethod(
             "discoverLoadedWorldOnPrimaryThread", World::class.java
         ).apply { isAccessible = true }
-        discover.invoke(lifecycle, emptyWorld)
+        assertEquals(emptyList<GeneratorKey>(), discover.invoke(lifecycle, emptyWorld))
         assertEquals(1, chunkReads)
 
         runtime.close() // Intentionally leave the independent lifecycle open.
