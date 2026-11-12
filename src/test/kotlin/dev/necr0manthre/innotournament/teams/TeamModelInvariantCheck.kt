@@ -4,6 +4,7 @@ import dev.necr0manthre.innotournament.players.PluginPlayer
 import dev.necr0manthre.innotournament.tournament.Tournament
 import dev.necr0manthre.innotournament.tournament.TournamentTeam
 import dev.necr0manthre.innotournament.tournament.TournamentPhase
+import dev.necr0manthre.innotournament.tournament.testTournament
 import dev.necr0manthre.innotournament.tournament.events.EventPlan
 import dev.necr0manthre.innotournament.teams.PluginTeam.TeamManager
 import dev.necr0manthre.innotournament.teams.events.PlayerTeamEvent
@@ -491,10 +492,90 @@ fun main() {
     manager.afterLeave.unsubscribe(observeLeave)
     manager.afterRemove.unsubscribe(observeRemove)
     check(manager.getAllTeams() == listOf(teamA))
+    verifyTournamentOwnership(manager)
+    verifyJoinScoreGuards(manager)
     verifyBulkRemovalFrozenSizes(manager)
     verifyDeletedTeamRanking(manager, teamA, d, e)
 
     println("TeamModelInvariantCheck: OK")
+}
+
+private fun verifyTournamentOwnership(manager: TeamManager) {
+    val player = PluginPlayer.get(UUID.randomUUID())
+    val team = (manager.createNewTeam(player, "ownership-${player.uuid}", Component.text("Ownership"))
+        as TeamCreateResult.Created).team
+    val tournament = testTournament(manager)
+    check(tournament.getTeam(team) == null && tournament.getPlayer(player) == null)
+    check(tournament.teams().isEmpty() && tournament.getPlayer(player) == null)
+
+    Tournament::class.java.getDeclaredField("phase").apply { isAccessible = true }
+        .set(tournament, TournamentPhase.STARTED)
+    tournament.checkTeam(team)
+    val tournamentTeam = checkNotNull(tournament.getTeam(team))
+    val tournamentPlayer = checkNotNull(tournament.getPlayer(player))
+    check(tournamentPlayer.team === tournamentTeam)
+    check(tournamentTeam.players == listOf(tournamentPlayer))
+    check(runCatching { (tournament.teams() as MutableList<*>).clear() }.exceptionOrNull() is UnsupportedOperationException)
+
+    tournament.addScores(tournamentTeam, 2.0)
+    check(runCatching { tournament.addScores(tournamentTeam, Double.NaN) }.isFailure)
+    check(runCatching { tournament.addScores(tournamentTeam, Double.POSITIVE_INFINITY) }.isFailure)
+    check(tournamentTeam.score == 2.0)
+    tournament.addScores(tournamentTeam, Double.MAX_VALUE)
+    check(tournamentTeam.score == Double.MAX_VALUE)
+    check(runCatching { tournament.addScores(tournamentTeam, Double.MAX_VALUE) }.isFailure)
+    check(tournamentTeam.score == Double.MAX_VALUE)
+
+    check(team.tryKickPlayerFromTeam(player).isSuccess)
+    check(tournament.getPlayer(player) == null)
+    check(tournamentPlayer.team === tournamentTeam)
+    check(tournamentTeam.score == Double.MAX_VALUE)
+    check(manager.removeTeam(team))
+    check(runCatching { tournament.addScores(tournamentTeam, 1.0) }.isFailure)
+    check(tournamentTeam.score == Double.MAX_VALUE)
+}
+
+private fun verifyJoinScoreGuards(manager: TeamManager) {
+    val first = PluginPlayer.get(UUID.randomUUID())
+    val second = PluginPlayer.get(UUID.randomUUID())
+    val team = (manager.createNewTeam(first, "ratio-${first.uuid}", Component.text("Ratio"))
+        as TeamCreateResult.Created).team
+    val tournament = testTournament(manager, listOf(0.0, Double.MIN_VALUE, Double.MAX_VALUE))
+    Tournament::class.java.getDeclaredField("phase").apply { isAccessible = true }
+        .set(tournament, TournamentPhase.STARTED)
+    tournament.checkTeam(team)
+    val record = checkNotNull(tournament.getTeam(team))
+    tournament.addScores(record, Double.MAX_VALUE)
+    val originalScore = record.score
+    check(originalScore.isFinite() && originalScore > 0.0)
+
+    val join: (TeamChange) -> Unit = tournament::onPlayerJoinTeam
+    manager.afterJoin.subscribe(join)
+    val error = runCatching { team.tryAddPlayerToTeam(second) }.exceptionOrNull()
+    manager.afterJoin.unsubscribe(join)
+    check(error is IllegalArgumentException)
+    check(record.score == originalScore) // The overflowing join ratio is rejected before the score write.
+
+    val leave: (TeamChange) -> Unit = tournament::onPlayerLeaveTeam
+    manager.afterLeave.subscribe(leave)
+    dev.necr0manthre.innotournament.tournament.withPrimaryTestServer {
+        check(team.tryKickPlayerFromTeam(second).isSuccess)
+    }
+    manager.afterLeave.unsubscribe(leave)
+    check(record.score == originalScore) // Leaving never recalculates the old team's score.
+    check(manager.removeTeam(team))
+
+    val productPlayer = PluginPlayer.get(UUID.randomUUID())
+    val productTeam = (manager.createNewTeam(productPlayer, "product-${productPlayer.uuid}", Component.text("Product"))
+        as TeamCreateResult.Created).team
+    val productTournament = testTournament(manager, listOf(Double.MAX_VALUE))
+    Tournament::class.java.getDeclaredField("phase").apply { isAccessible = true }
+        .set(productTournament, TournamentPhase.STARTED)
+    productTournament.checkTeam(productTeam)
+    val productRecord = checkNotNull(productTournament.getTeam(productTeam))
+    check(runCatching { productTournament.addScores(productRecord, 2.0) }.isFailure)
+    check(productRecord.score == 0.0)
+    check(manager.removeTeam(productTeam))
 }
 
 private fun verifyBulkRemovalFrozenSizes(manager: TeamManager) {
@@ -563,16 +644,14 @@ private fun verifyBulkRemovalFrozenSizes(manager: TeamManager) {
 }
 
 private fun verifyDeletedTeamRanking(manager: TeamManager, activeTeam: PluginTeam, player: PluginPlayer, lastMember: PluginPlayer) {
-    val origin = Location(null, 0.0, 0.0, 0.0)
-    val tournament = Tournament(manager, origin, origin, null, origin, GameMode.SURVIVAL,
-        EventPlan.of(emptyList()), EventPlan.of(emptyList()), doubleArrayOf(1.0), 0f)
-    val currentRecord = checkNotNull(tournament.getOrCreateTournamentTeam(activeTeam))
-    activeTeam.acceptAll = true
-    tournament.setupTeam(currentRecord)
-    check(!activeTeam.acceptAll)
-    currentRecord.score = 25.0
+    val tournament = testTournament(manager, listOf(1.0))
     Tournament::class.java.getDeclaredField("phase").apply { isAccessible = true }
         .set(tournament, TournamentPhase.STARTED)
+    activeTeam.acceptAll = true
+    tournament.checkTeam(activeTeam)
+    val currentRecord = checkNotNull(tournament.getTeam(activeTeam))
+    check(!activeTeam.acceptAll)
+    tournament.addScores(currentRecord, 25.0)
 
     val initializeDuringJoin = Tournament::class.java.getDeclaredMethod(
         "checkTeam", PluginTeam::class.java, Boolean::class.javaPrimitiveType
@@ -588,29 +667,31 @@ private fun verifyDeletedTeamRanking(manager: TeamManager, activeTeam: PluginTea
         manager.afterJoin.unsubscribe(setupDuringJoin)
     }
     check(!leadingTeam.acceptAll && tournament.getTeam(leadingTeam) != null)
-    val historicalRecord = checkNotNull(tournament.getOrCreateTournamentTeam(leadingTeam))
-    historicalRecord.score = 100.0
+    val historicalRecord = checkNotNull(tournament.getTeam(leadingTeam))
+    tournament.addScores(historicalRecord, 100.0)
 
     val output = PlainTextComponentSerializer.plainText()
-    val standingsMethod = Tournament::class.java.getDeclaredMethod("finalStandingsMessage")
-        .apply { isAccessible = true }
-    fun standings() = output.serialize(standingsMethod.invoke(tournament) as Component)
+    fun standings() = dev.necr0manthre.innotournament.tournament.withPrimaryTestServer {
+        tournament.standings().joinToString(", ") {
+            "${it.rank}. ${output.serialize(it.displayName)} (${it.score})"
+        }
+    }
     val remainingName = output.serialize(activeTeam.displayName)
-    val onlyRemaining = "Tournament ended. Results: 1. $remainingName (25.0)"
+    val onlyRemaining = "1. $remainingName (25.0)"
 
     val onRemove: (PluginTeam) -> Unit = tournament::onTeamRemoved
     manager.afterRemove.subscribe(onRemove)
     try {
         check(tournament.getTopTeams(1) == listOf(historicalRecord))
-        check(standings() == "Tournament ended. Results: 1. Leader (100.0), 2. $remainingName (25.0)")
+        check(standings() == "1. Leader (100.0), 2. $remainingName (25.0)")
         check(manager.removeTeamFromCommand(leadingTeam))
         check(tournament.getTeam(leadingTeam) == null)
         check(historicalRecord.score == 100.0)
         val records = Tournament::class.java.getDeclaredField("teams").apply { isAccessible = true }
             .get(tournament) as Set<*>
         check(historicalRecord in records) // Deleted teams are still stored as history.
-        // A stale public factory call must not revive the removed team or add a second record.
-        check(tournament.getOrCreateTournamentTeam(leadingTeam) == null)
+        // A removed team's canonical lookup must not revive it or add a second record.
+        check(tournament.getTeam(leadingTeam) == null)
         check(tournament.getTeam(leadingTeam) == null && records.size == 2)
         check(tournament.getTopTeams(10) == listOf(currentRecord))
         check(standings() == onlyRemaining)
@@ -622,11 +703,12 @@ private fun verifyDeletedTeamRanking(manager: TeamManager, activeTeam: PluginTea
 
         val replacement = (manager.createNewTeam(player, "leader", Component.text("Replacement"))
             as TeamCreateResult.Created).team
-        val replacementRecord = checkNotNull(tournament.getOrCreateTournamentTeam(replacement))
-        replacementRecord.score = 10.0
+        tournament.checkTeam(replacement)
+        val replacementRecord = checkNotNull(tournament.getTeam(replacement))
+        tournament.addScores(replacementRecord, 10.0)
         check(replacement !== leadingTeam && replacementRecord !== historicalRecord)
         check(manager.getTeamById("leader") === replacement)
-        check(tournament.getOrCreateTournamentTeam(leadingTeam) == null)
+        check(tournament.getTeam(leadingTeam) == null)
         check(tournament.getTeam(leadingTeam) == null && records.size == 3)
         check(tournament.getTopTeams(10) == listOf(currentRecord, replacementRecord))
         check(standings() == "$onlyRemaining, 2. Replacement (10.0)")
@@ -634,7 +716,7 @@ private fun verifyDeletedTeamRanking(manager: TeamManager, activeTeam: PluginTea
         check(manager.removeTeamFromCommand(activeTeam))
         check(manager.removeTeamFromCommand(replacement))
         check(tournament.getTopTeams(10).isEmpty())
-        check(standings() == "Tournament ended") // History exists, no active places.
+        check(standings().isEmpty()) // History exists, no active places.
         check(records.size == 3 && historicalRecord in records)
     } finally {
         manager.afterRemove.unsubscribe(onRemove)

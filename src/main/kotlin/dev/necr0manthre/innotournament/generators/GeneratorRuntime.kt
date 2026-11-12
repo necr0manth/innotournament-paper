@@ -5,6 +5,7 @@ import dev.necr0manthre.innotournament.tournament.environment.PluginChunkTickets
 import org.bukkit.Chunk
 import org.bukkit.World
 import org.bukkit.inventory.ItemStack
+import java.util.Collections
 import java.util.UUID
 
 /**
@@ -38,18 +39,12 @@ class GeneratorRuntime(
         check(generators.discovered().isEmpty()) { "GeneratorRuntime requires an empty, exclusively owned ItemGeneratorSystem" }
     }
 
-    /** Scan only the world's ALREADY loaded chunks, e.g. on enable or WorldLoadEvent. */
-    fun discoverLoadedWorld(world: World) {
-        ensureOpen()
-        world.loadedChunks.forEach(::discoverLoadedChunk)
-    }
-
     /** Read only our chunk-PDC markers; repeated or reentrant discovery never adds another lease. */
-    fun discoverLoadedChunk(chunk: Chunk) {
+    fun discoverLoadedChunk(chunk: Chunk): List<GeneratorKey> {
         ensureOpen()
         val id = id(chunk)
         val existing = chunks[id]
-        if (existing != null && existing.stage != Stage.ACTIVE) return
+        if (existing != null && existing.stage != Stage.ACTIVE) return emptyList()
         val world = chunk.world
         check(world.isChunkLoaded(chunk.x, chunk.z)) {
             "Generator discovery needs an already loaded chunk: world=${world.uid} chunk=(${chunk.x},${chunk.z})"
@@ -57,14 +52,14 @@ class GeneratorRuntime(
         if (existing != null) check(existing.chunk.world === world) { "Generator world instance changed without deactivation: $id" }
 
         val stored = placements.read(chunk)
-        if (existing == null && stored.isEmpty()) return
+        if (existing == null && stored.isEmpty()) return emptyList()
         val active = existing ?: ActiveChunk(chunk).also { chunks[id] = it }
         val storedByPosition = stored.associateBy { it.position }
         active.placements.forEach { (position, key) ->
             check(storedByPosition[position] == key) { "Active generator has a missing/changed placement marker: $key" }
         }
         val added = stored.filter { it.position !in active.placements }
-        if (added.isEmpty()) return
+        if (added.isEmpty()) return emptyList()
 
         active.stage = Stage.DISCOVERING // reserve before ticket acquisition can fire a synchronous load event
         if (active.lease == null) active.lease = tickets.acquire(world, chunk.x, chunk.z)
@@ -74,6 +69,7 @@ class GeneratorRuntime(
             displays.sync(world, snapshot)
         }
         active.stage = Stage.ACTIVE
+        return Collections.unmodifiableList(added)
     }
 
     /** Run exactly once per server tick, independently of Tournament stage and elapsed wall time. */
@@ -126,6 +122,12 @@ class GeneratorRuntime(
         val after = checkNotNull(generators.find(key.position))
         if (before.slots != after.slots) displays.sync(active.chunk.world, after)
         return true // even an empty generator accepts one valid Dice, as defined by the core
+    }
+
+    /** Only an actual tournament start calls this, with its explicitly resolved gameplay worlds. */
+    fun resetForWorlds(worldIds: Set<UUID>) {
+        ensureOpen()
+        generators.resetForWorlds(worldIds) // core defers its reset to each instance's next tick
     }
 
     /** Deactivate the exact key after the adapter has removed its PDC entry, but before block removal. */

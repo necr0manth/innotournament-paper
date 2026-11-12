@@ -1,16 +1,24 @@
 package dev.necr0manthre.innotournament.commands
 
 import com.mojang.brigadier.tree.LiteralCommandNode
-import dev.necr0manthre.innotournament.teams.PluginTeam.TeamManager
+import dev.necr0manthre.innotournament.tournament.TournamentConfigRepository
+import dev.necr0manthre.innotournament.tournament.TournamentConfigEditor
+import dev.necr0manthre.innotournament.tournament.TournamentControl
 import io.papermc.paper.command.brigadier.CommandSourceStack
 import io.papermc.paper.command.brigadier.Commands
 import org.bukkit.command.CommandSender
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import java.lang.reflect.Proxy
+import java.nio.file.Path
 
 class TournamentCommandPermissionTest {
+    companion object {
+        @JvmStatic @BeforeAll fun bootstrapVanillaArguments() = PaperCommandTestBootstrap.ensure()
+    }
+
     @Test
     fun administrativeNodesRequireThePluginPermission() {
         var root: LiteralCommandNode<CommandSourceStack>? = null
@@ -26,10 +34,16 @@ class TournamentCommandPermissionTest {
             setOf(commandRoot.literal)
         } as Commands
 
-        TournamentCommand(TeamManager()).register(registrar)
+        val repository = TournamentConfigRepository()
+        TournamentCommand(
+            TournamentControl(repository) { error("Command was not executed") },
+            TournamentConfigEditor(repository),
+            Path.of("plugins", "innotournament-paper")
+        ).register(registrar)
 
         val commands = root!!.children.associateBy { it.name }
         val protected = mapOf(
+            "set" to commands.getValue("set"),
             "select" to commands.getValue("select"),
             "prepare" to commands.getValue("prepare"),
             "start" to commands.getValue("start"),

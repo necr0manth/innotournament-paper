@@ -98,9 +98,11 @@ object InnoTournamentEventHandlers {
             val scores = rawScores.map { it.toDouble().also { number -> require(number.isFinite()) } }
             ITournamentEventListener<ISourcePlayerProvider> { tournament, playerProvider ->
                 val player = playerProvider.sourcePlayer ?: return@ITournamentEventListener
-                val team = player.team ?: return@ITournamentEventListener
+                require(tournament.getPlayer(player.pluginPlayer) === player) {
+                    "Tournament player is stale"
+                }
                 // Original Java's scores[lives] throws on an out-of-range index.
-                tournament.addScores(team, scores[player.lives])
+                tournament.addScoresToPlayer(player, scores[player.lives])
             }
         }
     )
@@ -113,9 +115,7 @@ object InnoTournamentEventHandlers {
                 "false" -> false
                 else -> throw IllegalArgumentException("Expected true or false")
             }
-            ITournamentEventListener<Any?> { _, _ ->
-                Bukkit.getWorlds().forEach { it.pvp = pvp }
-            }
+            ITournamentEventListener<Any?> { tournament, _ -> tournament.setPvp(pvp) }
         })
     )
 
