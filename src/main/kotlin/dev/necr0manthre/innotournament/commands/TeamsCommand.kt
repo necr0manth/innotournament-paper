@@ -84,7 +84,7 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                                     return@executes 0
                                 }
 
-                            if (!invites.requestJoin(player, team)) {
+                            if (!invites.tryJoinTeam(player, team)) {
                                 ctx.source.sender.sendMessage(
                                     Component.text(
                                         "You can't join this team",
@@ -223,13 +223,11 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                                     }
                                 }
                             }
-                            val previousInvite = invites.getInvite(invited, team)
                             val invitation = invites.invitePlayerToTeam(invited, team, 1000)
                             if (invitation == null) {
                                 ctx.source.sender.sendMessage(Component.text("Unable to invite player", NamedTextColor.RED))
                                 return@executes 0
                             }
-                            if (invitation === previousInvite) return@executes Command.SINGLE_SUCCESS
                             invited.player?.sendMessage(
                                 Component.empty()
                                     .append(inviter.displayName)
