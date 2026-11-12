@@ -76,15 +76,18 @@ The repository includes a `runServer` task configured for Paper 26.1.2 with a 2 
 
 1. Build the project.
 2. Copy `innotournament-paper-1.0-all.jar` into the Paper server's `plugins` directory.
-3. Start the server once, then create the tournament directory if it does not exist. No configuration is
-   generated automatically.
-4. Place tournament JSON files under:
+3. Before the first server start, copy the three bundled files in `generators/` to
+   `plugins/innotournament-paper/generators/` on the server. The plugin requires all three profiles and
+   does not create or modify them.
+4. Start the server once, then create the tournament directory if it does not exist. No tournament
+   configuration is generated automatically.
+5. Place tournament JSON files under:
 
    ```text
    plugins/innotournament-paper/tournaments/
    ```
 
-5. Select a configuration and prepare or start the tournament with the administrative commands below.
+6. Select a configuration and prepare or start the tournament with the administrative commands below.
 
 A tournament file defines the tournament and pre-tournament spawns, optional start-box structure and
 position, pre-start game mode, score modifiers, last-team score, and paths to the pre-start and main event
@@ -127,8 +130,8 @@ Players with `innotournament.admin` bypass pre-start game-mode enforcement.
 - The sidebar, pre-start boundary enforcement, repeated-team initialization, and some natural-end listener
   cleanup paths are still incomplete.
 - Offline participants can keep a team alive, while an empty started tournament ends on its first tick.
-- Original custom content, generators, client networking, and JourneyMap integration have not been ported.
-- The repository has no automated test suite or bundled end-to-end tournament configuration yet.
+- Original custom content, client networking, and JourneyMap integration have not been ported.
+- No bundled end-to-end tournament configuration is provided yet.
 
 See the [original Architectury implementation](https://github.com/necr0manth/InnoTournament) for the
 pre-port codebase.
