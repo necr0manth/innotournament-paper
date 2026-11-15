@@ -132,11 +132,24 @@ class Innotournament : JavaPlugin() {
             startBoxOrigin
         )
 
-        val tournament = Tournament(
+        lateinit var tournament: Tournament
+        val presentation = TournamentPresentation(
+            this,
+            TournamentSidebarTransport(checkNotNull(server.scoreboardManager)),
+            {
+                when (tournament.phase) {
+                    TournamentPhase.PREPARED -> TournamentSidebarCapture.capturePrepared(teamManager)
+                    TournamentPhase.STARTED -> TournamentSidebarCapture.captureStarted(tournament, teamManager)
+                    else -> error("Cannot capture a live sidebar during ${tournament.phase}")
+                }
+            }
+        )
+        tournament = Tournament(
             teamManager,
             definition,
             environment,
             TournamentPlayerEffects(environment),
+            presentation,
             this,
             { generatorRuntime.resetForWorlds(bindings.gameplayWorldIds) }
         )
