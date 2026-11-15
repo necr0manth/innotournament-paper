@@ -3,7 +3,6 @@ package dev.necr0manthre.innotournament.tournament
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import java.util.Collections
-import java.util.Locale
 import java.util.UUID
 
 /** Builds the frozen ended-state sidebar and announcement without consulting live teams or players. */
@@ -68,7 +67,7 @@ object TournamentResultRenderer {
             .append(formattedScore(team.score, sidebar))
 
     private fun formattedScore(score: Double, sidebar: Boolean): Component =
-        Component.text(String.format(Locale.ROOT, "%.2f", score)).let { formatted ->
+        Component.text(TournamentScoreFormatter.format(score)).let { formatted ->
             if (sidebar) formatted else formatted.hoverEvent(
                 Component.text("Точное значение: $score")
             )

@@ -84,6 +84,17 @@ class ItemGeneratorSystem(private val profiles: GeneratorProfiles, private val r
         return true
     }
 
+    /**
+     * Call on an actual tournament start with the explicitly resolved gameplay world UUIDs.
+     * Known instances reset immediately before their next production tick. Future discoveries
+     * already start clean; unrelated worlds are never marked or reset.
+     */
+    fun resetForWorlds(worldIds: Set<UUID>) {
+        instances.values.forEach { runtime ->
+            if (runtime.key.position.worldId in worldIds) runtime.markForReset()
+        }
+    }
+
     /** Discard runtime state on plugin disable without affecting persistent placement PDC. */
     fun discardRuntime() {
         instances.clear()
@@ -107,14 +118,20 @@ class ItemGeneratorSystem(private val profiles: GeneratorProfiles, private val r
         private var level = 0
         private var timer = 0
         private var waitingForNextLevel = false
+        private var resetPending = false
 
         fun snapshot(): GeneratorInstance = Snapshot(key, level, timer, waitingForNextLevel, slots)
+
+        fun markForReset() {
+            resetPending = true
+        }
 
         private fun reset() {
             slots.fill(null)
             level = 0
             timer = 0
             waitingForNextLevel = false
+            resetPending = false
         }
 
         fun take(): List<ItemStack> {
@@ -130,6 +147,11 @@ class ItemGeneratorSystem(private val profiles: GeneratorProfiles, private val r
 
         fun tick(): Boolean {
             var slotsChanged = false
+            if (resetPending) {
+                slotsChanged = slots.any { it != null }
+                reset()
+            }
+
             if (waitingForNextLevel) {
                 val next = profile.levels[level + 1]
                 if (timer >= next.generationTime) {

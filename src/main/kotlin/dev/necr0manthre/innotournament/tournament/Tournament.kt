@@ -1,37 +1,40 @@
 package dev.necr0manthre.innotournament.tournament
 
 import com.destroystokyo.paper.event.server.ServerTickEndEvent
-import dev.necr0manthre.innotournament.Innotournament
 import dev.necr0manthre.innotournament.players.PluginPlayer
 import dev.necr0manthre.innotournament.teams.PluginTeam
 import dev.necr0manthre.innotournament.teams.PluginTeam.TeamManager
 import dev.necr0manthre.innotournament.teams.events.TeamChange
 import dev.necr0manthre.innotournament.tournament.events.*
-import net.kyori.adventure.text.Component
 import org.bukkit.*
-import org.bukkit.block.structure.Mirror
-import org.bukkit.block.structure.StructureRotation
+import org.bukkit.advancement.Advancement
+import org.bukkit.advancement.AdvancementProgress
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.HandlerList
 import org.bukkit.event.Listener
 import org.bukkit.event.entity.PlayerDeathEvent
 import org.bukkit.event.player.PlayerRespawnEvent
+import org.bukkit.plugin.Plugin
+import org.bukkit.potion.PotionEffect
+import org.bukkit.potion.PotionEffectType
+import dev.necr0manthre.innotournament.tournament.environment.TournamentEnvironment
+import dev.necr0manthre.innotournament.tournament.environment.WorldPoint
 import java.util.*
+import java.util.Collections
 import kotlin.math.min
+
+private enum class ParticipationPreparation { PENDING, APPLYING, READY }
 
 class Tournament(
     private val teamManager: TeamManager,
-    val tournamentSpawn: Location,
-    var tournamentPreSpawn: Location,
-    var startBoxStructureResourceLocation: NamespacedKey?,
-    var startBoxPos: Location,
-    private val preStartGameMode: GameMode,
-    private val preStartEvents: EventPlan,
-    private val mainEvents: EventPlan,
-    var teamScoreModifiers: DoubleArray,
-    val lastTeamScore: Float
+    private val definition: LoadedTournamentDefinition,
+    private val environment: TournamentEnvironment,
+    private val playerEffects: TournamentPlayerEffects,
+    private val plugin: Plugin,
+    private val afterSuccessfulStart: (Tournament) -> Unit
 ) {
+    private val settings = definition.settings
     sealed interface PlayerTournamentState {
         val tournament: Tournament?
     }
@@ -41,18 +44,55 @@ class Tournament(
     }
 
     private class PlayerTournamentStateImpl : PlayerTournamentState {
-        var tournamentPlayer: TournamentPlayer? = null
+        var participation: TournamentPlayer? = null
 
         override val tournament: Tournament?
-            get() = tournamentPlayer?.tournament
+            get() = participation?.tournament
     }
 
     private class TeamTournamentStateImpl : TeamTournamentState {
-        var tournamentTeam: TournamentTeam? = null
-        var initialized: Boolean = false
+        var participation: TournamentTeam? = null
 
         override val tournament: Tournament?
-            get() = tournamentTeam?.tournament
+            get() = participation?.tournament
+    }
+
+    private inner class TournamentPlayerImpl(
+        override val pluginPlayer: PluginPlayer,
+        override val team: TournamentTeam
+    ) : TournamentPlayer {
+        private var livesValue = 3
+        private var preparation = ParticipationPreparation.PENDING
+
+        override val tournament: Tournament get() = this@Tournament
+        override val lives: Int get() = livesValue
+        override val prepared: Boolean get() = preparation == ParticipationPreparation.READY
+
+        override fun setLives(value: Int) = setParticipationLives(this, value)
+
+        fun setLivesInternally(value: Int) { livesValue = value }
+        fun applyNewParticipationReset(player: Player) {
+            if (preparation != ParticipationPreparation.PENDING) return
+            check(getPlayer(pluginPlayer) === this && pluginPlayer.player === player &&
+                pluginPlayer.team === team.pluginTeam) { "Tournament participation changed before its reset" }
+            preparation = ParticipationPreparation.APPLYING
+            playerEffects.resetNewParticipation(player)
+            check(getPlayer(pluginPlayer) === this && pluginPlayer.player === player &&
+                pluginPlayer.team === team.pluginTeam) { "Tournament participation changed during its reset" }
+            preparation = ParticipationPreparation.READY
+        }
+    }
+
+    private inner class TournamentTeamImpl(
+        override val pluginTeam: PluginTeam
+    ) : TournamentTeam {
+        override val tournament: Tournament get() = this@Tournament
+        var scoreValue = 0.0
+        override val score: Double get() = scoreValue
+        override val advancements: MutableMap<Advancement, AdvancementProgress> = mutableMapOf()
+        override val deleted: Boolean get() = teamManager.getTeamById(pluginTeam.id) !== pluginTeam
+        override val players: List<TournamentPlayer>
+            get() = Collections.unmodifiableList(pluginTeam.players.mapNotNull(::getPlayer))
     }
 
     private fun PluginPlayer.getTournamentState(): PlayerTournamentStateImpl =
@@ -61,14 +101,17 @@ class Tournament(
     private fun PluginTeam.getTournamentState(): TeamTournamentStateImpl =
         tournamentState as TeamTournamentStateImpl
 
-    private fun clearPlayerState(player: PluginPlayer) {
+    private fun clearPlayerState(player: PluginPlayer, expected: TournamentPlayer? = null) {
         val state = player.getTournamentState()
-        if (state.tournamentPlayer?.tournament === this) state.tournamentPlayer = null
+        val participation = state.participation
+        if (participation?.tournament === this && (expected == null || participation === expected)) {
+            state.participation = null
+        }
     }
 
     private fun clearTeamState(team: PluginTeam) {
         val state = team.getTournamentState()
-        if (state.tournamentTeam?.tournament === this) state.tournamentTeam = null
+        if (state.participation?.tournament === this) state.participation = null
     }
 
     private fun isPlayerBoundToAnotherTournament(player: PluginPlayer): Boolean {
@@ -90,174 +133,194 @@ class Tournament(
 
     var phase: TournamentPhase = TournamentPhase.CREATED
         private set
-    var startTime: Long = 0L
-
+    var result: TournamentResult? = null
+        private set
+    private var stageTick = 0L
+    val elapsedTime: Long get() = stageTick
     private val preStartEventInstances = mutableSetOf<TournamentEventInstance<*>>()
     private val mainEventInstances = mutableSetOf<TournamentEventInstance<*>>()
     private val removedEvents = mutableSetOf<TournamentEventInstance<*>>()
-    private val players = HashSet<TournamentPlayer>()
-    private val teams = HashSet<TournamentTeam>()
+    private val players = LinkedHashSet<TournamentPlayer>()
+    private val teams = LinkedHashSet<TournamentTeam>()
+    private val preparedTeams = LinkedHashSet<TournamentTeam>()
     private var listener: Listener? = null
     private var teamJoinListener: ((TeamChange) -> Unit)? = null
     private var teamLeaveListener: ((TeamChange) -> Unit)? = null
     private var teamRemoveListener: ((PluginTeam) -> Unit)? = null
 
-    fun getServer(): Server = Bukkit.getServer()
-
-    fun updateSidebars() {
-        // Scoreboard/sidebar presentation is intentionally separate from team ownership.
-    }
-
     fun remove() {
-        println("$this is being removed")
-        onRemoveEvent.invoke(Unit)
+        if (phase == TournamentPhase.REMOVED) return
+        listener?.let {
+            HandlerList.unregisterAll(it)
+            listener = null
+        }
+        unregisterTeamEventListeners()
         removeEvents(preStartEventInstances)
         removeEvents(mainEventInstances)
         advancementHandler.unregister()
-        listener?.let { HandlerList.unregisterAll(it) }
-        listener = null
-        unregisterTeamEventListeners()
+        environment.releaseResources()
         clearParticipationState()
-        phase = TournamentPhase.ENDED
-        println("$this is removed")
+        phase = TournamentPhase.REMOVED
+        onRemoveEvent.invoke(Unit)
     }
 
     fun placeStartBox() {
-        val structureKey = startBoxStructureResourceLocation ?: return
-        val structure = Bukkit.getStructureManager().loadStructure(structureKey)
-            ?: run {
-                Innotournament.instance.logger.warning("Unknown start box structure: $structureKey")
-                return
-            }
-        structure.place(startBoxPos, true, StructureRotation.NONE, Mirror.NONE, 0, 1.0f, Random())
+        check(phase == TournamentPhase.PREPARED || phase == TournamentPhase.STARTED) {
+            "Start box can only be placed in a prepared or started tournament"
+        }
+        environment.placeStartBox()
     }
 
     fun removeStartBox() {
-        val structureKey = startBoxStructureResourceLocation ?: return
-        val structure = Bukkit.getStructureManager().loadStructure(structureKey)
-            ?: run {
-                Innotournament.instance.logger.warning("Unknown start box structure: $structureKey")
-                return
-            }
-        val world = startBoxPos.world ?: return
-        val size = structure.size
-        for (x in 0 until size.blockX) {
-            for (y in 0 until size.blockY) {
-                for (z in 0 until size.blockZ) {
-                    world.getBlockAt(startBoxPos.blockX + x, startBoxPos.blockY + y, startBoxPos.blockZ + z)
-                        .type = Material.AIR
-                }
-            }
+        check(phase == TournamentPhase.PREPARED || phase == TournamentPhase.STARTED || phase == TournamentPhase.ENDED) {
+            "Start box can only be removed from a prepared, started, or ended tournament"
         }
+        environment.removeStartBox()
+    }
+
+    fun changeBorder(size: Double, ticks: Long) {
+        check(phase == TournamentPhase.PREPARED || phase == TournamentPhase.STARTED || phase == TournamentPhase.ENDED) {
+            "World borders can only change in a prepared, started, or ended tournament"
+        }
+        environment.changeBorder(size, ticks)
+    }
+
+    fun setPvp(enabled: Boolean) {
+        check(phase == TournamentPhase.PREPARED || phase == TournamentPhase.STARTED || phase == TournamentPhase.ENDED) {
+            "PvP can only change in a prepared, started, or ended tournament"
+        }
+        environment.setPvp(enabled)
     }
 
     fun prepare() {
-        check(phase != TournamentPhase.PREPARED) { "Tournament is already prepared" }
-        check(phase != TournamentPhase.STARTED) { "Tournament is already started" }
-        check(phase != TournamentPhase.ENDED) { "Tournament is already ended" }
-
+        check(phase == TournamentPhase.CREATED) { "Tournament can only prepare once from CREATED" }
         registerListener()
         registerTeamEventListeners()
-        setWorldBorderAndSpawn(tournamentPreSpawn)
+        subscribeAll(definition.prePlan, preStartEventInstances)
+        environment.applyPrepare()
         phase = TournamentPhase.PREPARED
-        subscribeAll(preStartEvents, preStartEventInstances)
+        stageTick = 0L
         Bukkit.getOnlinePlayers().forEach(::checkPlayer)
         onPrepareEvent.invoke(Unit)
         advancementHandler.register()
     }
 
     fun start() {
-        check(phase != TournamentPhase.CREATED) { "Tournament is not prepared yet" }
-        check(phase != TournamentPhase.STARTED) { "Tournament is already started" }
-        check(phase != TournamentPhase.ENDED) { "Tournament is already ended" }
-
-        subscribeAll(mainEvents, mainEventInstances)
+        check(phase == TournamentPhase.PREPARED) { "Tournament can only start from PREPARED" }
+        subscribeAll(definition.mainPlan, mainEventInstances)
         removeEvents(preStartEventInstances)
+        environment.applyStart()
+        initializeTeamsAndPlayers()
+        Bukkit.getOnlinePlayers().forEach(::prepareStartedPlayer)
         phase = TournamentPhase.STARTED
-        startTime = timeWorld()?.fullTime ?: 0L
-        setWorldBorderAndSpawn(tournamentSpawn)
-        checkAllTeams()
-        onStartEvent.invoke(Unit)
+        stageTick = 0L
         Bukkit.getOnlinePlayers().forEach(::checkPlayer)
+        onStartEvent.invoke(Unit)
+        afterSuccessfulStart(this)
     }
 
     fun checkPlayer(player: Player) {
         val pluginPlayer = PluginPlayer.get(player)
         if (isPlayerBoundToAnotherTournament(pluginPlayer)) return
 
-        if (phase == TournamentPhase.PREPARED && !player.hasPermission("innotournament.admin")) {
-            player.gameMode = preStartGameMode
+        if (phase == TournamentPhase.PREPARED) {
+            if (player.gameMode != settings.preStartGameMode) player.gameMode = settings.preStartGameMode
+            if (!environment.isInsideStartBox(WorldPoint(player.world, player.location.x, player.location.y, player.location.z))) {
+                player.health = 0.0
+            }
             return
         }
 
         if (phase != TournamentPhase.STARTED) return
-        val pluginTeam = pluginPlayer.team
-        if (pluginTeam == null) {
+        prepareStartedPlayer(player)
+    }
+
+    private fun prepareStartedPlayer(player: Player) {
+        val pluginPlayer = PluginPlayer.get(player)
+        if (isPlayerBoundToAnotherTournament(pluginPlayer)) return
+        if (pluginPlayer.team == null) {
             clearPlayer(pluginPlayer)
             player.gameMode = GameMode.SPECTATOR
             return
         }
-
         val tournamentPlayer = getOrCreateTournamentPlayer(pluginPlayer) ?: return
-        if (!tournamentPlayer.initialized) {
-            tournamentPlayer.initialized = setupPlayer(tournamentPlayer)
-        }
-
-        if (tournamentPlayer.lives == 0) {
-            player.gameMode = GameMode.SPECTATOR
-        }
+        (tournamentPlayer as TournamentPlayerImpl).applyNewParticipationReset(player)
     }
 
     fun checkAllTeams() {
-        teamManager.getAllTeams().forEach(::checkTeam)
+        if (phase != TournamentPhase.STARTED) return
+        initializeTeamsAndPlayers()
     }
 
-    fun checkTeam(team: PluginTeam) = checkTeam(team, resetAcceptAll = true)
+    fun checkTeam(team: PluginTeam) {
+        checkTeam(team, resetAcceptAll = true)
+    }
 
     private fun checkTeam(team: PluginTeam, resetAcceptAll: Boolean) {
         if (phase != TournamentPhase.STARTED) return
         val tournamentTeam = getOrCreateTournamentTeam(team) ?: return
-        val state = team.getTournamentState()
-        if (!state.initialized) {
+        if (preparedTeams.add(tournamentTeam)) {
             setupTeam(tournamentTeam, resetAcceptAll)
-            state.initialized = true
+        }
+        team.players.forEach(::getOrCreateTournamentPlayer)
+    }
+
+    private fun initializeTeamsAndPlayers() {
+        teamManager.getAllTeams().forEach { team ->
+            val tournamentTeam = getOrCreateTournamentTeam(team) ?: return@forEach
+            if (preparedTeams.add(tournamentTeam)) setupTeam(tournamentTeam, resetAcceptAll = true)
+            team.players.forEach(::getOrCreateTournamentPlayer)
         }
     }
 
-    val elapsedTime: Long
-        get() = if (phase >= TournamentPhase.STARTED) (timeWorld()?.fullTime ?: startTime) - startTime else 0L
-
-    private fun setupPlayer(tournamentPlayer: TournamentPlayer): Boolean {
-        val player = tournamentPlayer.player ?: return false
-        tournamentPlayer.lives = 3
-        player.health = player.maxHealth
-        player.inventory.clear()
-        player.foodLevel = 20
-        player.saturation = 1f
-        player.gameMode = GameMode.SURVIVAL
-        player.teleport(centerBlock(tournamentSpawn))
-        return true
-    }
-
-    fun setupTeam(team: TournamentTeam) {
-        setupTeam(team, resetAcceptAll = true)
-    }
-
     private fun setupTeam(team: TournamentTeam, resetAcceptAll: Boolean) {
-        team.score = 0.0
-        team.advancements.clear()
-        if (resetAcceptAll) team.acceptAll = false
+        (team as TournamentTeamImpl).scoreValue = 0.0
+        if (resetAcceptAll) team.pluginTeam.acceptAll = false
     }
 
     fun addScoresToPlayer(player: TournamentPlayer?, score: Double) {
-        if (player == null || player.lives == 0) return
+        if (player == null) return
+        requireCanonicalPlayer(player)
+        check(phase == TournamentPhase.STARTED && player.prepared) {
+            "Player score requires a prepared participation in a started tournament"
+        }
         addScores(player.team, score)
     }
 
     fun addScores(team: TournamentTeam?, score: Double) {
         if (team == null) return
-        team.score += score * scoreModifier(team.players.size)
-        updateSidebars()
+        requireCanonicalTeam(team)
+        check(phase == TournamentPhase.STARTED) { "Team score requires a started tournament" }
+        require(score.isFinite()) { "Score must be finite" }
+        val delta = score * scoreModifier(team.pluginTeam.players.size)
+        require(delta.isFinite()) { "Calculated score must be finite" }
+        val updated = team.score + delta
+        require(updated.isFinite()) { "Calculated score must be finite" }
+        (team as TournamentTeamImpl).scoreValue = updated
+    }
+
+    private fun setParticipationLives(player: TournamentPlayerImpl, value: Int) {
+        require(value >= 0) { "Lives cannot be negative" }
+        check(phase == TournamentPhase.STARTED) { "Lives can only change in a started tournament" }
+        requireCanonicalPlayer(player)
+        check(player.prepared && getTeam(player.team.pluginTeam) === player.team) {
+            "Lives require a prepared player on an active team"
+        }
+        val previous = player.lives
+        player.setLivesInternally(value)
+        if (previous > 0 && value == 0) playerRunOutOfLivesEvent.invoke(player)
+    }
+
+    private fun requireCanonicalPlayer(player: TournamentPlayer) {
+        require(player.tournament === this && getPlayer(player.pluginPlayer) === player) {
+            "Tournament player is stale or belongs to another tournament"
+        }
+    }
+
+    private fun requireCanonicalTeam(team: TournamentTeam) {
+        require(team.tournament === this && getTeam(team.pluginTeam) === team) {
+            "Tournament team is stale or belongs to another tournament"
+        }
     }
 
     // The result set includes deleted history; only exact live registry objects receive places.
@@ -279,19 +342,24 @@ class Tournament(
         val team = getTeam(pluginTeam) ?: return
         val oldModifier = scoreModifier(event.sizeBefore)
         if (oldModifier != 0.0) {
-            team.score *= scoreModifier(event.sizeAfter) / oldModifier
+            val ratio = scoreModifier(event.sizeAfter) / oldModifier
+            val updated = team.score * ratio
+            require(ratio.isFinite() && updated.isFinite()) { "Calculated score must be finite" }
+            (team as TournamentTeamImpl).scoreValue = updated
         }
         event.player.player?.let(::checkPlayer)
-        updateSidebars()
     }
 
     fun onPlayerLeaveTeam(event: TeamChange) {
         if (phase != TournamentPhase.STARTED) return
         // A completed leave expires that runtime participation. A later join gets
         // a fresh TournamentPlayer and its normal setup, even on an A -> B move.
-        clearPlayer(event.player)
+        val participation = event.player.getTournamentState().participation
+        if (participation?.tournament === this && participation.team.pluginTeam === event.team) {
+            clearPlayer(event.player, event.team)
+            event.player.player?.gameMode = GameMode.SPECTATOR
+        }
         // Leaving never changes the historical score of the departing team.
-        updateSidebars()
     }
 
     fun onTeamRemoved(team: PluginTeam) {
@@ -302,12 +370,12 @@ class Tournament(
         clearTeamState(team)
     }
 
-    fun getOrCreateTournamentTeam(team: PluginTeam): TournamentTeam? {
+    private fun getOrCreateTournamentTeam(team: PluginTeam): TournamentTeam? {
         if (teamManager.getTeamById(team.id) !== team) return null
         val state = team.getTournamentState()
-        val tournamentTeam = state.tournamentTeam ?: run {
-            val newTournamentTeam = TournamentTeam(team, this)
-            state.tournamentTeam = newTournamentTeam
+        val tournamentTeam = state.participation ?: run {
+            val newTournamentTeam = TournamentTeamImpl(team)
+            state.participation = newTournamentTeam
             teams.add(newTournamentTeam)
             return@run newTournamentTeam
         }
@@ -316,34 +384,35 @@ class Tournament(
         return tournamentTeam
     }
 
-    fun getOrCreateTournamentPlayer(player: PluginPlayer): TournamentPlayer? {
+    private fun getOrCreateTournamentPlayer(player: PluginPlayer): TournamentPlayer? {
         val team = player.team ?: return null
-        if (getOrCreateTournamentTeam(team) == null)
-            return null
+        val tournamentTeam = getOrCreateTournamentTeam(team) ?: return null
         val playerState = player.getTournamentState()
-        val tournamentPlayer: TournamentPlayer = playerState.tournamentPlayer ?: run {
-            val newTournamentPlayer = TournamentPlayer(player, this)
-            playerState.tournamentPlayer = newTournamentPlayer
+        val tournamentPlayer: TournamentPlayer = playerState.participation ?: run {
+            val newTournamentPlayer = TournamentPlayerImpl(player, tournamentTeam)
+            playerState.participation = newTournamentPlayer
             players.add(newTournamentPlayer)
             return@run newTournamentPlayer
         }
-        if (tournamentPlayer.tournament != this)
+        if (tournamentPlayer.tournament !== this || tournamentPlayer.team !== tournamentTeam)
             return null
         return tournamentPlayer
     }
 
     fun getPlayer(player: PluginPlayer): TournamentPlayer? {
         val state = player.getTournamentState()
-        if (state.tournament != this)
+        val participation = state.participation
+        if (participation?.tournament !== this || participation.pluginPlayer.team !== participation.team.pluginTeam)
             return null
-        return state.tournamentPlayer
+        return participation
     }
 
     fun getTeam(team: PluginTeam): TournamentTeam? {
         val state = team.getTournamentState()
-        if (state.tournament != this)
+        val participation = state.participation
+        if (participation?.tournament !== this || teamManager.getTeamById(team.id) !== team)
             return null
-        return state.tournamentTeam
+        return participation
     }
 
     private fun subscribeAll(
@@ -366,26 +435,27 @@ class Tournament(
     }
 
     private fun scoreModifier(teamSize: Int): Double {
-        if (teamScoreModifiers.isEmpty()) return 1.0
-        return teamScoreModifiers[teamSize.coerceIn(teamScoreModifiers.indices)]
+        if (settings.teamScoreModifiers.isEmpty()) return 1.0
+        return settings.teamScoreModifiers[teamSize.coerceIn(settings.teamScoreModifiers.indices)]
+    }
+
+    private fun handlePlayerDeath(pluginPlayer: PluginPlayer) {
+        val player = getPlayer(pluginPlayer) ?: return
+        if (phase != TournamentPhase.STARTED || !player.prepared || player.lives <= 0) return
+        player.setLives(player.lives - 1)
     }
 
     private fun registerListener() {
         if (listener != null) return
-        listener = object : Listener {
+        val owned = object : Listener {
             @EventHandler
             fun onTick(event: ServerTickEndEvent) {
-                tick()
+                serverTick()
             }
 
             @EventHandler
             fun onDeath(event: PlayerDeathEvent) {
-                val data = getPlayer(PluginPlayer.get(event.entity)) ?: return
-                if (phase == TournamentPhase.STARTED && data.lives > 0) {
-                    data.lives--
-                    updateSidebars()
-                    if (data.lives == 0) playerRunOutOfLivesEvent.invoke(data)
-                }
+                handlePlayerDeath(PluginPlayer.get(event.entity))
             }
 
             @EventHandler
@@ -394,54 +464,90 @@ class Tournament(
                 if (isPlayerBoundToAnotherTournament(pluginPlayer)) return
 
                 if (phase == TournamentPhase.PREPARED) {
-                    event.respawnLocation = tournamentPreSpawn
-                } else if (phase == TournamentPhase.STARTED) {
-                    if (getPlayer(pluginPlayer) == null) return
-                    event.respawnLocation = tournamentSpawn
+                    val respawn = environment.preStartRespawnLocation()
+                    event.respawnLocation = respawn
+                    event.player.setRespawnLocation(respawn, false)
                 }
             }
-        }.also { Bukkit.getPluginManager().registerEvents(it, Innotournament.instance) }
+
+            @EventHandler
+            fun onPostRespawn(event: com.destroystokyo.paper.event.player.PlayerPostRespawnEvent) {
+                if (phase == TournamentPhase.STARTED) {
+                    event.player.addPotionEffect(PotionEffect(PotionEffectType.ABSORPTION, 200, 100))
+                }
+            }
+        }
+        listener = owned
+        Bukkit.getPluginManager().registerEvents(owned, plugin)
     }
 
-    private fun tick() {
-        if (phase != TournamentPhase.CREATED && phase != TournamentPhase.ENDED) {
+    private fun serverTick() {
+        if (phase == TournamentPhase.PREPARED || phase == TournamentPhase.STARTED) {
             Bukkit.getOnlinePlayers().forEach(::checkPlayer)
             checkAllTeams()
         }
 
+        if (phase != TournamentPhase.PREPARED && phase != TournamentPhase.STARTED) return
+        stageTick++
         if (phase != TournamentPhase.STARTED) return
-        val aliveTeams = teams.filter { team ->
-            team.players.any { (getPlayer(it)?.lives ?: 0) > 0 }
-        }
+
+        val aliveTeams = aliveTeams()
         if (aliveTeams.size > 1) return
 
-        aliveTeams.singleOrNull()?.let { it.score += lastTeamScore }
-        broadcastFinalStandings()
-        onEndEvent.invoke(Unit)
-        phase = TournamentPhase.ENDED
-        removeEvents(mainEventInstances)
-        advancementHandler.unregister()
-        unregisterTeamEventListeners()
-        clearParticipationState()
+        finishNormally(aliveTeams.singleOrNull())
     }
 
-    private fun broadcastFinalStandings() {
-        Bukkit.broadcast(finalStandingsMessage())
-    }
-
-    private fun finalStandingsMessage(): Component {
-        val standings = currentStandings()
-        if (standings.isEmpty()) return Component.text("Tournament ended")
-
-        val message = Component.text()
-            .append(Component.text("Tournament ended. Results: "))
-        standings.forEachIndexed { index, team ->
-            if (index > 0) message.append(Component.text(", "))
-            message.append(Component.text("${index + 1}. "))
-                .append(team.displayName)
-                .append(Component.text(" (${team.score})"))
+    private fun finishNormally(lastAliveTeam: TournamentTeam?) {
+        check(phase == TournamentPhase.STARTED)
+        val updatedLastScore = lastAliveTeam?.let {
+            val updated = it.score + settings.lastTeamScore.toDouble()
+            require(updated.isFinite()) { "Calculated final score must be finite" }
+            updated
         }
-        return message.build()
+        val frozenResult = createResult(lastAliveTeam, updatedLastScore)
+        if (lastAliveTeam != null) (lastAliveTeam as TournamentTeamImpl).scoreValue = requireNotNull(updatedLastScore)
+        result = frozenResult
+        phase = TournamentPhase.ENDED
+        Bukkit.broadcast(TournamentResultRenderer.finalAnnouncement(frozenResult))
+        onEndEvent.invoke(Unit)
+    }
+
+    private fun createResult(lastAliveTeam: TournamentTeam?, updatedLastScore: Double?): TournamentResult {
+        val eligible = teams.filter { !it.deleted }.map { team ->
+            team to if (team === lastAliveTeam) requireNotNull(updatedLastScore) else team.score
+        }.sortedWith { first, second ->
+            when {
+                first.second > second.second -> -1
+                first.second < second.second -> 1
+                else -> first.first.pluginTeam.id.compareTo(second.first.pluginTeam.id)
+            }
+        }
+        var rank = 0
+        var previousScore = 0.0
+        var hasPreviousScore = false
+        val rows = eligible.mapIndexed { index, (team, score) ->
+            if (!hasPreviousScore || score != previousScore) rank = index + 1
+            previousScore = score
+            hasPreviousScore = true
+            TournamentResult.Team(
+                team.pluginTeam.id,
+                team.pluginTeam.displayName,
+                score,
+                rank,
+                team.pluginTeam.players.map { TournamentResult.Player(it.uuid, it.offlinePlayer.name) }
+            )
+        }
+        val winners = rows.firstOrNull()?.let { top ->
+            rows.filter { it.score == top.score }.mapTo(LinkedHashSet()) { it.id }
+        } ?: emptySet()
+        return TournamentResult(rows, winners, lastAliveTeam?.pluginTeam?.id)
+    }
+
+    private fun aliveTeams(): List<TournamentTeam> = teams.filter { team ->
+        teamManager.getTeamById(team.id) === team.pluginTeam && team.players.any { player ->
+            player.prepared && player.lives > 0 && player.player != null &&
+                getPlayer(player.pluginPlayer) === player && player.team === team
+        }
     }
 
     private fun registerTeamEventListeners() {
@@ -463,46 +569,24 @@ class Tournament(
         teamRemoveListener = null
     }
 
-    private fun clearPlayer(player: PluginPlayer) {
-        players.remove(player.getTournamentState().tournamentPlayer)
-        clearPlayerState(player)
+    private fun clearPlayer(player: PluginPlayer, expectedTeam: PluginTeam? = null) {
+        val participation = player.getTournamentState().participation ?: return
+        if (participation.tournament !== this ||
+            (expectedTeam != null && participation.team.pluginTeam !== expectedTeam)
+        ) return
+        players.remove(participation)
+        clearPlayerState(player, participation)
     }
 
     private fun clearParticipationState() {
-        players.forEach { clearPlayerState(it.pluginPlayer) }
+        players.forEach { clearPlayerState(it.pluginPlayer, it) }
         teams.forEach { clearTeamState(it.pluginTeam) }
         players.clear()
         teams.clear()
-    }
-
-    private fun setWorldBorderAndSpawn(location: Location) {
-        val world = location.world ?: return
-        world.spawnLocation = centerBlock(location)
-        world.worldBorder.center = Location(world, location.x, location.y, location.z)
-    }
-
-    private fun centerBlock(location: Location): Location {
-        val world = location.world
-        return Location(world, location.blockX + 0.5, location.blockY.toDouble(), location.blockZ + 0.5)
-    }
-
-    private fun timeWorld(): World? {
-        return Bukkit.getWorlds().firstOrNull { it.environment == World.Environment.NORMAL }
-            ?: Bukkit.getWorlds().firstOrNull()
+        preparedTeams.clear()
     }
 
     companion object {
-        private var tournament: Tournament? = null
-
-        fun setTournament(tournament: Tournament?) {
-            this.tournament?.remove()
-            this.tournament = tournament
-        }
-
-        fun get(): Tournament? {
-            return tournament
-        }
-
         fun createPlayerState(): PlayerTournamentState = PlayerTournamentStateImpl()
 
         fun createTeamState(): TeamTournamentState = TeamTournamentStateImpl()

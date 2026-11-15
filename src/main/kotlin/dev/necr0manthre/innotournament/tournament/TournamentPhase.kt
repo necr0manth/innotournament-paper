@@ -4,5 +4,6 @@ enum class TournamentPhase {
     CREATED,
     PREPARED,
     STARTED,
-    ENDED
+    ENDED,
+    REMOVED
 }

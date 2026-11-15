@@ -128,6 +128,12 @@ class GeneratorRuntime(
         return true // even an empty generator accepts one valid Dice, as defined by the core
     }
 
+    /** Only an actual tournament start calls this, with its explicitly resolved gameplay worlds. */
+    fun resetForWorlds(worldIds: Set<UUID>) {
+        ensureOpen()
+        generators.resetForWorlds(worldIds) // core defers its reset to each instance's next tick
+    }
+
     /** Deactivate the exact key after the adapter has removed its PDC entry, but before block removal. */
     fun unregister(key: GeneratorKey): Boolean {
         ensureOpen()
