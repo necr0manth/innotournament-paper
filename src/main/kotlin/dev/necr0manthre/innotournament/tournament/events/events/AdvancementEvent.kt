@@ -1,24 +1,27 @@
 package dev.necr0manthre.innotournament.tournament.events.events
 
-import dev.necr0manthre.innotournament.players.PluginPlayer
 import dev.necr0manthre.innotournament.tournament.Tournament
-import dev.necr0manthre.innotournament.tournament.events.BukkitEventBasedTournamentEvent
+import dev.necr0manthre.innotournament.tournament.RealPlayerAdvancement
+import dev.necr0manthre.innotournament.tournament.events.SimpleEvent
+import dev.necr0manthre.innotournament.tournament.events.TournamentEvent
 import dev.necr0manthre.innotournament.tournament.events.ValueType
 import dev.necr0manthre.innotournament.tournament.events.TournamentEventInstance
 import dev.necr0manthre.innotournament.tournament.events.event_data.PlayerHolder
 import org.bukkit.advancement.Advancement
-import org.bukkit.event.player.PlayerAdvancementDoneEvent
 
 class AdvancementEvent(private val advancement: Advancement) :
-    BukkitEventBasedTournamentEvent<PlayerAdvancementDoneEvent, PlayerHolder>(
-        PlayerAdvancementDoneEvent::class,
-        PlayerAdvancementDoneEvent::getHandlerList,
-        ValueType.of(PlayerHolder::class)
-    ) {
+    TournamentEvent<PlayerHolder> {
+    override val valueType = ValueType.of(PlayerHolder::class)
+
     override fun subscribe(tournament: Tournament): TournamentEventInstance<PlayerHolder> {
-        return subscribeBukkit(tournament) { event, callback ->
-            if (event.advancement.key == advancement.key)
-                callback(PlayerHolder(tournament.getPlayer(PluginPlayer.get(event.player)) ?: return@subscribeBukkit))
+        val backingEvent = SimpleEvent<PlayerHolder>()
+        var handler: ((RealPlayerAdvancement) -> Unit)? = { event ->
+            if (event.key == advancement.key) backingEvent.invoke(PlayerHolder(event.player))
+        }
+        tournament.realPlayerAdvancements.subscribe(handler!!)
+        return TournamentEventInstance(tournament, backingEvent) {
+            handler?.let(tournament.realPlayerAdvancements::unsubscribe)
+            handler = null
         }
     }
 }

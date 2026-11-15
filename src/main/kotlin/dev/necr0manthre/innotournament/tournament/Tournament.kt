@@ -8,12 +8,12 @@ import dev.necr0manthre.innotournament.teams.events.TeamChange
 import dev.necr0manthre.innotournament.tournament.events.*
 import org.bukkit.*
 import org.bukkit.advancement.Advancement
-import org.bukkit.advancement.AdvancementProgress
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.HandlerList
 import org.bukkit.event.Listener
 import org.bukkit.event.entity.PlayerDeathEvent
+import org.bukkit.event.player.PlayerAdvancementDoneEvent
 import org.bukkit.event.player.PlayerRespawnEvent
 import org.bukkit.plugin.Plugin
 import org.bukkit.potion.PotionEffect
@@ -22,8 +22,11 @@ import dev.necr0manthre.innotournament.tournament.environment.TournamentEnvironm
 import dev.necr0manthre.innotournament.tournament.environment.WorldPoint
 import java.util.*
 import java.util.Collections
+import java.util.IdentityHashMap
+import java.util.LinkedHashMap
 import kotlin.math.min
 
+private data class AdvancementFact(val advancement: Advancement, val criteria: Set<String>)
 private enum class ParticipationPreparation { PENDING, APPLYING, READY }
 
 class Tournament(
@@ -80,6 +83,7 @@ class Tournament(
             check(getPlayer(pluginPlayer) === this && pluginPlayer.player === player &&
                 pluginPlayer.team === team.pluginTeam) { "Tournament participation changed during its reset" }
             preparation = ParticipationPreparation.READY
+            advancementHandler.syncCurrentParticipation(this)
         }
     }
 
@@ -89,10 +93,137 @@ class Tournament(
         override val tournament: Tournament get() = this@Tournament
         var scoreValue = 0.0
         override val score: Double get() = scoreValue
-        override val advancements: MutableMap<Advancement, AdvancementProgress> = mutableMapOf()
         override val deleted: Boolean get() = teamManager.getTeamById(pluginTeam.id) !== pluginTeam
         override val players: List<TournamentPlayer>
             get() = Collections.unmodifiableList(pluginTeam.players.mapNotNull(::getPlayer))
+    }
+
+    private inner class TournamentAdvancementHandler {
+        private val realPlayerAdvancementsEvent = SimpleEvent<RealPlayerAdvancement>()
+        private val firstTeamAdvancementsEvent = SimpleEvent<FirstTeamAdvancement>()
+        val realPlayerAdvancements: EventSubscriptionView<RealPlayerAdvancement> =
+            realPlayerAdvancementsEvent.asSubscriptionView()
+        val firstTeamAdvancements: EventSubscriptionView<FirstTeamAdvancement> =
+            firstTeamAdvancementsEvent.asSubscriptionView()
+        private val playerKeys = IdentityHashMap<TournamentPlayer, MutableSet<NamespacedKey>>()
+        private val teamFacts = IdentityHashMap<TournamentTeam, LinkedHashMap<NamespacedKey, AdvancementFact>>()
+        private var listener: Listener? = null
+        private var synchronizing = false
+
+        fun register() {
+            if (listener != null) return
+            val owned = object : Listener {
+                @EventHandler
+                fun onAdvancement(event: PlayerAdvancementDoneEvent) = handle(event)
+
+                @EventHandler
+                fun onJoin(event: org.bukkit.event.player.PlayerJoinEvent) = handleJoin(event.player)
+            }
+            listener = owned
+            Bukkit.getPluginManager().registerEvents(owned, plugin)
+        }
+
+        fun unregister() {
+            listener?.let { HandlerList.unregisterAll(it) }
+            listener = null
+        }
+
+        private fun handle(event: PlayerAdvancementDoneEvent) {
+            if (synchronizing || phase != TournamentPhase.STARTED) return
+            val player = currentPreparedPlayer(PluginPlayer.get(event.player)) ?: return
+            if (player.player !== event.player) return
+            val team = currentTeam(player) ?: return
+            val advancement = event.advancement
+            val progress = event.player.getAdvancementProgress(advancement)
+            if (!progress.isDone) return
+
+            val fact = AdvancementFact(
+                advancement,
+                Collections.unmodifiableSet(LinkedHashSet(progress.awardedCriteria))
+            )
+            val personalKeyAdded = playerKeys.getOrPut(player, ::LinkedHashSet).add(advancement.key)
+            val firstForTeam = teamFacts.getOrPut(team, ::LinkedHashMap)
+                .putIfAbsent(advancement.key, fact) == null
+
+            if (personalKeyAdded) realPlayerAdvancementsEvent.invoke(RealPlayerAdvancement(player, advancement.key))
+            if (firstForTeam) firstTeamAdvancementsEvent.invoke(FirstTeamAdvancement(team, advancement.key))
+
+            syncTeam(team)
+        }
+
+        private fun handleJoin(player: Player) {
+            if (phase != TournamentPhase.STARTED) return
+            val participation = currentPreparedPlayer(PluginPlayer.get(player)) ?: return
+            if (participation.player !== player) return
+            currentTeam(participation)?.let(::syncTeam)
+        }
+
+        private fun syncTeam(team: TournamentTeam) {
+            val facts = teamFacts[team]?.values.orEmpty().toList()
+            if (facts.isEmpty()) return
+            for (participation in team.players) {
+                if (currentPreparedPlayer(participation.pluginPlayer) !== participation ||
+                    participation.team !== team || currentTeam(participation) !== team
+                ) continue
+                val player = participation.player ?: continue
+                syncPlayer(participation, team, player, facts)
+            }
+        }
+
+        fun syncCurrentParticipation(participation: TournamentPlayer) {
+            if (currentPreparedPlayer(participation.pluginPlayer) !== participation) return
+            val team = currentTeam(participation) ?: return
+            val player = participation.player ?: return
+            syncPlayer(participation, team, player, teamFacts[team]?.values.orEmpty().toList())
+        }
+
+        private fun syncPlayer(
+            participation: TournamentPlayer,
+            team: TournamentTeam,
+            player: Player,
+            facts: List<AdvancementFact>
+        ) {
+            withSemanticNoticesSuppressed {
+                for (fact in facts) {
+                    if (currentPreparedPlayer(participation.pluginPlayer) !== participation ||
+                        currentTeam(participation) !== team || participation.player !== player
+                    ) return@withSemanticNoticesSuppressed
+                    val progress = player.getAdvancementProgress(fact.advancement)
+                    for (criterion in fact.criteria) {
+                        if (currentPreparedPlayer(participation.pluginPlayer) !== participation ||
+                            currentTeam(participation) !== team || participation.player !== player
+                        ) return@withSemanticNoticesSuppressed
+                        if (criterion in progress.remainingCriteria) progress.awardCriteria(criterion)
+                    }
+                }
+            }
+        }
+
+        private inline fun withSemanticNoticesSuppressed(action: () -> Unit) {
+            val previous = synchronizing
+            synchronizing = true
+            try {
+                action()
+            } finally {
+                synchronizing = previous
+            }
+        }
+
+        private fun currentPreparedPlayer(player: PluginPlayer): TournamentPlayer? {
+            if (phase != TournamentPhase.STARTED) return null
+            val participation = getPlayer(player) ?: return null
+            if (!participation.prepared || participation.pluginPlayer.team !== participation.team.pluginTeam) return null
+            return participation
+        }
+
+        private fun currentTeam(player: TournamentPlayer): TournamentTeam? {
+            val team = player.team
+            if (team.tournament !== this@Tournament || team.deleted ||
+                team.pluginTeam.players.none { it === player.pluginPlayer } ||
+                getTeam(team.pluginTeam) !== team
+            ) return null
+            return team
+        }
     }
 
     private fun PluginPlayer.getTournamentState(): PlayerTournamentStateImpl =
@@ -129,7 +260,11 @@ class Tournament(
     val onEnd: EventSubscriptionView<Unit> = onEndEvent.asSubscriptionView()
     val onRemove: EventSubscriptionView<Unit> = onRemoveEvent.asSubscriptionView()
     val playerRunOutOfLives: EventSubscriptionView<TournamentPlayer> = playerRunOutOfLivesEvent.asSubscriptionView()
-    val advancementHandler = TournamentAdvancementHandler(this)
+    private val advancementHandler = TournamentAdvancementHandler()
+    val realPlayerAdvancements: EventSubscriptionView<RealPlayerAdvancement> =
+        advancementHandler.realPlayerAdvancements
+    val firstTeamAdvancements: EventSubscriptionView<FirstTeamAdvancement> =
+        advancementHandler.firstTeamAdvancements
 
     var phase: TournamentPhase = TournamentPhase.CREATED
         private set
