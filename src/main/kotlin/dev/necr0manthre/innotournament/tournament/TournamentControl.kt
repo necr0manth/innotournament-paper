@@ -11,6 +11,8 @@ class TournamentControl(
     var current: Tournament? = null
         private set
 
+    val selectedPath: Path? get() = selectedPathValue
+
     /** Select a definition for the next prepare; this does not affect the current run. */
     fun select(path: Path) {
         selectedPathValue = path.toAbsolutePath().normalize()

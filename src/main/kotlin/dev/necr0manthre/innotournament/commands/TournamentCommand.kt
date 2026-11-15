@@ -2,6 +2,7 @@ package dev.necr0manthre.innotournament.commands
 
 import com.mojang.brigadier.Command
 import com.mojang.brigadier.arguments.StringArgumentType
+import dev.necr0manthre.innotournament.tournament.TournamentConfigEditor
 import dev.necr0manthre.innotournament.tournament.TournamentControl
 import dev.necr0manthre.innotournament.util.CommandRegisterer
 import io.papermc.paper.command.brigadier.CommandSourceStack
@@ -14,6 +15,7 @@ import java.nio.file.Path
 
 class TournamentCommand(
     private val control: TournamentControl,
+    private val editor: TournamentConfigEditor,
     private val dataFolder: Path
 ) {
     fun register(registrar: Commands) {
@@ -33,6 +35,7 @@ class TournamentCommand(
                 }
         )
 
+        registerer.add(TournamentConfigSetCommand.build(control, editor))
 
         registerer.add(
             Commands.literal("select")
