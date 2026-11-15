@@ -105,6 +105,7 @@ These commands require the `innotournament.admin` permission.
 - `/tournament prepare` - create and prepare the selected tournament.
 - `/tournament start` - start the prepared tournament.
 - `/tournament stop` - remove the active tournament and its runtime state.
+- `/tournament set ...` - update one of the six configured spawn, dimension, or start-box settings.
 
 ### Teams
 

@@ -2,6 +2,7 @@ package dev.necr0manthre.innotournament.commands
 
 import com.mojang.brigadier.tree.LiteralCommandNode
 import dev.necr0manthre.innotournament.tournament.TournamentConfigRepository
+import dev.necr0manthre.innotournament.tournament.TournamentConfigEditor
 import dev.necr0manthre.innotournament.tournament.TournamentControl
 import io.papermc.paper.command.brigadier.CommandSourceStack
 import io.papermc.paper.command.brigadier.Commands
@@ -36,11 +37,13 @@ class TournamentCommandPermissionTest {
         val repository = TournamentConfigRepository()
         TournamentCommand(
             TournamentControl(repository) { error("Command was not executed") },
+            TournamentConfigEditor(repository),
             Path.of("plugins", "innotournament-paper")
         ).register(registrar)
 
         val commands = root!!.children.associateBy { it.name }
         val protected = mapOf(
+            "set" to commands.getValue("set"),
             "select" to commands.getValue("select"),
             "prepare" to commands.getValue("prepare"),
             "start" to commands.getValue("start"),

@@ -27,6 +27,7 @@ class Innotournament : JavaPlugin() {
     private lateinit var generatorProtectionListener: GeneratorProtectionListener
     private lateinit var generatorInteractionListener: GeneratorInteractionListener
     private lateinit var tournamentControl: TournamentControl
+    private lateinit var tournamentConfigEditor: TournamentConfigEditor
     private lateinit var generatorTickTask: BukkitTask
     private lateinit var teamSaveTask: BukkitTask
     private lateinit var teamsPath: Path
@@ -66,10 +67,11 @@ class Innotournament : JavaPlugin() {
 
         val tournamentRepository = TournamentConfigRepository()
         tournamentControl = TournamentControl(tournamentRepository, ::createTournament)
+        tournamentConfigEditor = TournamentConfigEditor(tournamentRepository)
         lifecycleManager.registerEventHandler(LifecycleEvents.COMMANDS) { event ->
             val registrar = event.registrar()
             TeamsCommand(teamManager, inviteSystem).register(registrar)
-            TournamentCommand(tournamentControl, dataFolder.toPath()).register(registrar)
+            TournamentCommand(tournamentControl, tournamentConfigEditor, dataFolder.toPath()).register(registrar)
             WorldBorderCommand.register(registrar)
             InnoGiveCommand.register(registrar)
         }

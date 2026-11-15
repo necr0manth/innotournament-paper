@@ -21,6 +21,7 @@ class TournamentControlTest {
 
         assertThrows(IllegalStateException::class.java) { control.prepare() }
         control.select(Path.of("configs", "..", "tournament.json"))
+        assertEquals(Path.of("tournament.json").toAbsolutePath(), control.selectedPath)
         assertThrows(IllegalStateException::class.java) { control.start() }
         assertNull(control.current)
         assertEquals(0, factoryCalls)
