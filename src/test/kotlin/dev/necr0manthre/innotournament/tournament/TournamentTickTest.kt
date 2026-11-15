@@ -170,6 +170,7 @@ class TournamentTickTest {
             val onePlayer = checkNotNull(tournament.getPlayer(oneOwner))
             markPrepared(onePlayer)
             onePlayer.setLives(1)
+            activateTournamentPresentationForTest(tournament)
 
             var endEvents = 0
             tournament.onEnd.subscribe { endEvents++ }
@@ -210,6 +211,7 @@ class TournamentTickTest {
             winner.setLives(1)
             offlineOpponent.setLives(2)
             onlineIds.addAll(setOf(winnerOwner.uuid, offlineOwner.uuid))
+            activateTournamentPresentationForTest(tournament)
             invokeServerTick(tournament)
             assertEquals(TournamentPhase.STARTED, tournament.phase)
 
@@ -252,6 +254,7 @@ class TournamentTickTest {
             tournament.checkTeam(secondTeam)
             markPrepared(checkNotNull(tournament.getPlayer(firstOwner)))
             markPrepared(checkNotNull(tournament.getPlayer(secondOwner)))
+            activateTournamentPresentationForTest(tournament)
 
             // A disconnect followed by a reconnect before the server tick does not
             // remove the team from the current online-alive snapshot.
@@ -286,6 +289,7 @@ class TournamentTickTest {
             markPrepared(checkNotNull(tournament.getPlayer(teamOwner)))
             markPrepared(checkNotNull(tournament.getPlayer(disconnectedMember)))
             markPrepared(checkNotNull(tournament.getPlayer(opponentOwner)))
+            activateTournamentPresentationForTest(tournament)
 
             onlineIds.remove(disconnectedMember.uuid)
             invokeServerTick(tournament)
@@ -311,6 +315,7 @@ class TournamentTickTest {
             tournament.checkTeam(secondTeam)
             markPrepared(checkNotNull(tournament.getPlayer(firstOwner)))
             markPrepared(checkNotNull(tournament.getPlayer(secondOwner)))
+            activateTournamentPresentationForTest(tournament)
 
             invokeServerTick(tournament)
 
@@ -342,6 +347,7 @@ class TournamentTickTest {
             markPrepared(winner)
             lastLifePlayer.setLives(1)
             winner.setLives(1)
+            activateTournamentPresentationForTest(tournament)
 
             invokeServerTick(tournament)
             assertEquals(TournamentPhase.STARTED, tournament.phase)

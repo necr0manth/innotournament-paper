@@ -13,7 +13,9 @@ import org.bukkit.OfflinePlayer
 import org.bukkit.Server
 import org.bukkit.World
 import org.bukkit.entity.Player
+import net.kyori.adventure.text.Component
 import org.bukkit.plugin.Plugin
+import org.bukkit.scoreboard.ScoreboardManager
 import org.bukkit.structure.StructureManager
 import java.lang.reflect.Proxy
 import java.util.UUID
@@ -57,11 +59,17 @@ internal fun testTournament(
         null,
         point
     )
+    val presentation = TournamentPresentation(
+        plugin,
+        TournamentSidebarTransport(testProxy<ScoreboardManager> { method, _ -> unexpectedTestCall(method) })
+    ) { { _ -> TournamentLiveSidebarBuilder.Sidebar(Component.text("Live"), emptyList()) } }
+
     return Tournament(
         teamManager,
         LoadedTournamentDefinition(settings, prePlan, mainPlan),
         environment,
         TournamentPlayerEffects(environment),
+        presentation,
         plugin,
         {}
     )
@@ -71,6 +79,11 @@ internal fun markTournamentPlayerPrepared(player: TournamentPlayer) {
     val field = player.javaClass.getDeclaredField("preparation").apply { isAccessible = true }
     val ready = field.type.enumConstants.single { (it as Enum<*>).name == "READY" }
     field.set(player, ready)
+}
+
+internal fun activateTournamentPresentationForTest(tournament: Tournament) {
+    val field = Tournament::class.java.getDeclaredField("presentation").apply { isAccessible = true }
+    (field.get(tournament) as TournamentPresentation).activate()
 }
 
 internal fun <T> withPrimaryTestServer(action: () -> T): T {

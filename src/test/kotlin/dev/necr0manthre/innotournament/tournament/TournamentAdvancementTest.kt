@@ -63,7 +63,7 @@ class TournamentAdvancementTest {
 
         assertEquals(listOf("player", "team"), trace)
         assertEquals(listOf(sourceEntry), personal.map { it.player })
-        assertEquals(listOf(checkNotNull(fixture.tournament.getTeam(fixture.team))), firstTeam.map { it.team })
+        assertEquals(listOf(fixture.tournament.teams().single()), firstTeam.map { it.team })
         assertEquals(setOf("first"), teammateProgress.awarded)
         assertTrue(teammateProgress.proxy.isDone)
         assertEquals(listOf(sourceEntry), personalBridgeValues.map { it.player })
@@ -146,7 +146,7 @@ class TournamentAdvancementTest {
             fixture.tournament.firstTeamAdvancements.subscribe(notices::add)
             fixture.complete(source)
             val expectedNotices = notices.toList()
-            fixture.tournament.addScores(checkNotNull(fixture.tournament.getTeam(fixture.team)), 12.0)
+            fixture.tournament.addScores(fixture.tournament.teams().single(), 12.0)
 
             val joinListener: (TeamChange) -> Unit = fixture.tournament::onPlayerJoinTeam
             fixture.manager.afterJoin.subscribe(joinListener)
@@ -160,7 +160,7 @@ class TournamentAdvancementTest {
             assertTrue(checkNotNull(fixture.tournament.getPlayer(onlineJoin)).prepared)
             assertEquals(setOf("first"), onlineProgress.awarded)
             assertEquals(expectedNotices, notices)
-            assertEquals(12.0, checkNotNull(fixture.tournament.getTeam(fixture.team)).score)
+            assertEquals(12.0, fixture.tournament.teams().single().score)
 
             val pendingLogin = fixture.member("adv-reset-pending", isOnline = false)
             val pendingProgress = fixture.progress(emptySet())
@@ -177,7 +177,7 @@ class TournamentAdvancementTest {
             assertTrue(pendingParticipation.prepared)
             assertEquals(setOf("first"), pendingProgress.awarded)
             assertEquals(expectedNotices, notices)
-            assertEquals(12.0, checkNotNull(fixture.tournament.getTeam(fixture.team)).score)
+            assertEquals(12.0, fixture.tournament.teams().single().score)
         } finally {
             fixture.close()
         }
