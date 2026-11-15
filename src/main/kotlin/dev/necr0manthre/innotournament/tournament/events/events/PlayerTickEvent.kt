@@ -1,28 +1,32 @@
 package dev.necr0manthre.innotournament.tournament.events.events
 
-import com.destroystokyo.paper.event.server.ServerTickEndEvent
-import dev.necr0manthre.innotournament.players.PluginPlayer
 import dev.necr0manthre.innotournament.tournament.Tournament
-import dev.necr0manthre.innotournament.tournament.events.BukkitEventBasedTournamentEvent
+import dev.necr0manthre.innotournament.tournament.TournamentPlayer
+import dev.necr0manthre.innotournament.tournament.TournamentPhase
+import dev.necr0manthre.innotournament.tournament.TournamentTick
+import dev.necr0manthre.innotournament.tournament.events.TournamentTickBasedEvent
 import dev.necr0manthre.innotournament.tournament.events.ValueType
 import dev.necr0manthre.innotournament.tournament.events.TournamentEventInstance
 import dev.necr0manthre.innotournament.tournament.events.event_data.PlayerHolder
-import org.bukkit.Bukkit
-import java.util.*
 
 class PlayerTickEvent(val period: Int) :
-    BukkitEventBasedTournamentEvent<ServerTickEndEvent, PlayerHolder>(
-        ServerTickEndEvent::class,
-        ServerTickEndEvent::getHandlerList,
-        ValueType.of(PlayerHolder::class)
-    ) {
+    TournamentTickBasedEvent<PlayerHolder>(ValueType.of(PlayerHolder::class)) {
     override fun subscribe(tournament: Tournament): TournamentEventInstance<PlayerHolder> {
-        val counter = mutableMapOf<UUID, Int>()
-        return subscribeBukkit(tournament) { _, callback ->
-            for (player in Bukkit.getServer().onlinePlayers) {
-                if (counter.compute(player.uniqueId) { _, t -> ((t ?: -1) + 1) % period } == 0)
-                    callback(PlayerHolder(tournament.getPlayer(PluginPlayer.get(player)) ?: continue))
+        val eligibleFrames = mutableMapOf<TournamentPlayer, Int>()
+        return subscribeTicks(tournament) { tick: TournamentTick, callback ->
+            if (tick.stage != TournamentPhase.STARTED) return@subscribeTicks
+            for (player in tick.players) {
+                if (!isCurrent(tournament, tick, player)) continue
+                val count = (eligibleFrames[player] ?: 0) + 1
+                eligibleFrames[player] = count
+                if ((count - 1) % period != 0) continue
+                if (!isCurrent(tournament, tick, player)) continue
+                callback(PlayerHolder(player))
             }
         }
     }
+
+    private fun isCurrent(tournament: Tournament, tick: TournamentTick, player: TournamentPlayer): Boolean =
+        tournament.phase == tick.stage && player.prepared && player.pluginPlayer.player != null &&
+            tournament.getPlayer(player.pluginPlayer) === player
 }
