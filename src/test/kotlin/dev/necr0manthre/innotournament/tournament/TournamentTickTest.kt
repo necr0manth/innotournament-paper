@@ -27,6 +27,137 @@ import java.util.UUID
 
 class TournamentTickTest {
     @Test
+    fun snapshotsPlayersAsAnImmutableList() {
+        val source = mutableListOf<TournamentPlayer>()
+        val tick = TournamentTick(TournamentPhase.PREPARED, 1, source)
+
+        source.clear()
+
+        assertEquals(emptyList<TournamentPlayer>(), tick.players)
+        assertThrows(UnsupportedOperationException::class.java) {
+            (tick.players as MutableList<TournamentPlayer>).clear()
+        }
+    }
+
+    @Test
+    fun timeZeroAndOneFireOnTheFirstFrameAndLaterTimesUseTheStageCounter() {
+        val tournament = tournament()
+        setPhase(tournament, TournamentPhase.PREPARED)
+        val trace = mutableListOf<String>()
+        tournament.ticks.subscribe {
+            assertTrue(it.players.isEmpty())
+            trace.add("frame:${it.stageTick}")
+        }
+
+        fun timeEvent(time: Long, label: String) = TimeEvent(time).subscribe(tournament).also { instance ->
+            instance.addListener(ITournamentEventListener { _, _ -> trace.add(label) })
+        }
+        val zero = timeEvent(0, "time:0")
+        val one = timeEvent(1, "time:1")
+        val three = timeEvent(3, "time:3")
+
+        repeat(3) { dispatchNextTick(tournament) }
+
+        assertEquals(
+            listOf("frame:1", "time:0", "time:1", "frame:2", "frame:3", "time:3"),
+            trace
+        )
+        assertEquals(3L, stageTick(tournament))
+        zero.unsubscribe()
+        one.unsubscribe()
+        three.unsubscribe()
+    }
+
+    @Test
+    fun playerTickCountsEligibleFramesPerParticipationAndRechecksStaleEntries() {
+        val previousServer = setServer(onlineServer())
+        try {
+            val manager = PluginTeam.TeamManager()
+            val owner = PluginPlayer.get(UUID.randomUUID())
+            val team = (manager.createNewTeam(owner, "tick-owner", Component.text("tick-owner")) as
+                TeamCreateResult.Created).team
+            val tournament = tournament(manager)
+            setPhase(tournament, TournamentPhase.STARTED)
+            tournament.checkTeam(team)
+            val original = checkNotNull(tournament.getPlayer(owner))
+            markPrepared(original)
+            original.setLives(0)
+
+            val delivered = mutableListOf<TournamentPlayer>()
+            var invalidateBeforeDelivery = false
+            val staleFrameCallback: (TournamentTick) -> Unit = {
+                if (invalidateBeforeDelivery) {
+                    invalidateBeforeDelivery = false
+                    assertTrue(team.tryKickPlayerFromTeam(owner).isSuccess)
+                }
+            }
+            tournament.ticks.subscribe(staleFrameCallback)
+            val instance = PlayerTickEvent(2).subscribe(tournament)
+            instance.addListener(ITournamentEventListener { _, holder: PlayerHolder -> delivered.add(holder.player) })
+
+            dispatchNextTick(tournament)
+            dispatchNextTick(tournament)
+            dispatchNextTick(tournament)
+            assertEquals(listOf(original, original), delivered)
+
+            clearPlayer(tournament, owner)
+            tournament.checkTeam(team)
+            val replacement = checkNotNull(tournament.getPlayer(owner))
+            assertFalse(original === replacement)
+            markPrepared(replacement)
+            dispatchNextTick(tournament)
+            assertSame(replacement, delivered.last())
+            assertEquals(3, delivered.size)
+
+            invalidateBeforeDelivery = true
+            dispatchNextTick(tournament)
+            assertEquals(3, delivered.size)
+            tournament.ticks.unsubscribe(staleFrameCallback)
+
+            instance.unsubscribe()
+        } finally {
+            restoreServer(previousServer)
+        }
+    }
+
+    @Test
+    fun offlineFramesPauseAndPreparedFramesDoNotDeliverPlayerTicks() {
+        var online = true
+        val previousServer = setServer(onlineServer { online })
+        try {
+            val manager = PluginTeam.TeamManager()
+            val owner = PluginPlayer.get(UUID.randomUUID())
+            val team = (manager.createNewTeam(owner, "tick-offline", Component.text("tick-offline")) as
+                TeamCreateResult.Created).team
+            val tournament = tournament(manager)
+            setPhase(tournament, TournamentPhase.STARTED)
+            tournament.checkTeam(team)
+            val player = checkNotNull(tournament.getPlayer(owner))
+            markPrepared(player)
+
+            val delivered = mutableListOf<TournamentPlayer>()
+            val instance = PlayerTickEvent(2).subscribe(tournament)
+            instance.addListener(ITournamentEventListener { _, holder: PlayerHolder -> delivered.add(holder.player) })
+            dispatchNextTick(tournament)
+            online = false
+            dispatchNextTick(tournament)
+            dispatchNextTick(tournament)
+            online = true
+            dispatchNextTick(tournament)
+            assertEquals(listOf(player), delivered)
+            dispatchNextTick(tournament)
+            assertEquals(listOf(player, player), delivered)
+
+            setPhase(tournament, TournamentPhase.PREPARED)
+            dispatchNextTick(tournament)
+            assertEquals(2, delivered.size)
+            instance.unsubscribe()
+        } finally {
+            restoreServer(previousServer)
+        }
+    }
+
+    @Test
     fun oneOnlineAliveTeamFinishesOnTheNextTickWithoutNeedingTwoTeamsFirst() {
         val previousServer = setServer(onlineServer())
         try {
@@ -248,6 +379,10 @@ class TournamentTickTest {
 
     private fun stageTick(tournament: Tournament): Long =
         Tournament::class.java.getDeclaredField("stageTick").apply { isAccessible = true }.getLong(tournament)
+
+    private fun dispatchNextTick(tournament: Tournament) {
+        Tournament::class.java.getDeclaredMethod("dispatchNextTick").apply { isAccessible = true }.invoke(tournament)
+    }
 
     private fun invokeServerTick(tournament: Tournament) {
         Tournament::class.java.getDeclaredMethod("serverTick").apply { isAccessible = true }.invoke(tournament)

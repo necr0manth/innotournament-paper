@@ -255,11 +255,13 @@ class Tournament(
     private val onEndEvent = SimpleEvent<Unit>()
     private val onRemoveEvent = SimpleEvent<Unit>()
     private val playerRunOutOfLivesEvent = SimpleEvent<TournamentPlayer>()
+    private val ticksEvent = SimpleEvent<TournamentTick>()
     val onPrepare: EventSubscriptionView<Unit> = onPrepareEvent.asSubscriptionView()
     val onStart: EventSubscriptionView<Unit> = onStartEvent.asSubscriptionView()
     val onEnd: EventSubscriptionView<Unit> = onEndEvent.asSubscriptionView()
     val onRemove: EventSubscriptionView<Unit> = onRemoveEvent.asSubscriptionView()
     val playerRunOutOfLives: EventSubscriptionView<TournamentPlayer> = playerRunOutOfLivesEvent.asSubscriptionView()
+    val ticks: EventSubscriptionView<TournamentTick> = ticksEvent.asSubscriptionView()
     private val advancementHandler = TournamentAdvancementHandler()
     val realPlayerAdvancements: EventSubscriptionView<RealPlayerAdvancement> =
         advancementHandler.realPlayerAdvancements
@@ -271,7 +273,6 @@ class Tournament(
     var result: TournamentResult? = null
         private set
     private var stageTick = 0L
-    val elapsedTime: Long get() = stageTick
     private val preStartEventInstances = mutableSetOf<TournamentEventInstance<*>>()
     private val mainEventInstances = mutableSetOf<TournamentEventInstance<*>>()
     private val removedEvents = mutableSetOf<TournamentEventInstance<*>>()
@@ -623,7 +624,7 @@ class Tournament(
         }
 
         if (phase != TournamentPhase.PREPARED && phase != TournamentPhase.STARTED) return
-        stageTick++
+        dispatchNextTick()
         if (phase != TournamentPhase.STARTED) return
 
         val aliveTeams = aliveTeams()
@@ -676,6 +677,18 @@ class Tournament(
             rows.filter { it.score == top.score }.mapTo(LinkedHashSet()) { it.id }
         } ?: emptySet()
         return TournamentResult(rows, winners, lastAliveTeam?.pluginTeam?.id)
+    }
+
+    private fun dispatchNextTick() {
+        stageTick++
+        val frame = TournamentTick(
+            phase,
+            stageTick,
+            if (phase == TournamentPhase.STARTED) players.filter { player ->
+                player.prepared && player.player != null && getPlayer(player.pluginPlayer) === player
+            } else emptyList()
+        )
+        ticksEvent.invoke(frame)
     }
 
     private fun aliveTeams(): List<TournamentTeam> = teams.filter { team ->
