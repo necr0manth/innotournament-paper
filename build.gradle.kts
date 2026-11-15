@@ -31,7 +31,6 @@ dependencies {
 
 paperPluginYaml {
     main = "dev.necr0manthre.innotournament.Innotournament"
-    bootstrapper = "dev.necr0manthre.innotournament.InnotournamentBootstrap"
     loader = "xyz.jpenilla.gremlin.runtime.platformsupport.DefaultsPaperPluginLoader"
     apiVersion = "26.1.2"
     permissions.register("innotournament.admin") {

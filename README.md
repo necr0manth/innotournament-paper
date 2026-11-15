@@ -125,8 +125,7 @@ Players with `innotournament.admin` bypass pre-start game-mode enforcement.
 
 ## Current Limitations
 
-- Team, player, tournament, and invite state is stored in memory and is not persisted across restarts.
-- Invite expiration is not active because the invite scheduler is not registered yet.
+- Team state is saved in `teams.json`; invitations are transient and expire during runtime. Active tournament state is not persisted across restarts.
 - The sidebar, pre-start boundary enforcement, repeated-team initialization, and some natural-end listener
   cleanup paths are still incomplete.
 - Offline participants can keep a team alive, while an empty started tournament ends on its first tick.
