@@ -10,7 +10,6 @@ import dev.necr0manthre.innotournament.teams.PluginTeam
 import dev.necr0manthre.innotournament.teams.PluginTeam.TeamManager
 import dev.necr0manthre.innotournament.teams.TeamCreateResult
 import dev.necr0manthre.innotournament.teams.invites.InviteSystem
-import dev.necr0manthre.innotournament.tournament.Tournament
 import dev.necr0manthre.innotournament.util.CommandRegisterer
 import io.papermc.paper.command.brigadier.CommandSourceStack
 import io.papermc.paper.command.brigadier.Commands
@@ -57,7 +56,6 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                                 .append(team.displayName)
                         )
                     }
-                    updateSidebars()
                     Command.SINGLE_SUCCESS
                 }
         )
@@ -96,7 +94,6 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                             }
 
                             sendJoinPlayer(player, team)
-                            updateSidebars()
                             Command.SINGLE_SUCCESS
                         }
                 )
@@ -136,7 +133,6 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                             ctx.source.sender.sendMessage(
                                 Component.text("Created team ").append(team.displayName)
                             )
-                            updateSidebars()
                             Command.SINGLE_SUCCESS
                         }
                 )
@@ -310,7 +306,6 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                                         return@executes 0
                                     }
 
-                                    updateSidebars()
                                     Command.SINGLE_SUCCESS
                                 }
                         )
@@ -365,7 +360,6 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                                     )
                                 }
                             }
-                            updateSidebars()
                             Command.SINGLE_SUCCESS
                         }
                 )
@@ -408,7 +402,6 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                             target.player?.sendMessage(
                                 Component.text("You are now owner of team ").append(team.displayName)
                             )
-                            updateSidebars()
                             Command.SINGLE_SUCCESS
                         }
                 )
@@ -442,7 +435,6 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                     ctx.source.sender.sendMessage(
                         Component.text("Removed team ").append(team.displayName)
                     )
-                    updateSidebars()
                     Command.SINGLE_SUCCESS
                 }
                 .then(
@@ -467,7 +459,6 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
                             ctx.source.sender.sendMessage(
                                 Component.text("Removed team ").append(team.displayName)
                             )
-                            updateSidebars()
                             Command.SINGLE_SUCCESS
                         }
                 )
@@ -678,10 +669,6 @@ class TeamsCommand(private val teamManager: TeamManager, private val invites: In
             return null
         }
         return PluginPlayer.get(sender)
-    }
-
-    private fun updateSidebars() {
-        Tournament.get()?.updateSidebars()
     }
 
     private fun <S, T> RequiredArgumentBuilder<S, T>.suggestTeams(): RequiredArgumentBuilder<S, T> {

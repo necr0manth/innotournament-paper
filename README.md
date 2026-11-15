@@ -31,7 +31,7 @@ and tournament state.
 - `PluginPlayer` and `PluginTeam` hold plugin-lifetime player and team state.
 - `TournamentPlayer` and `TournamentTeam` hold participation state for the active tournament.
 - `Tournament` owns the lifecycle, participants, scoring, lives, advancement synchronization, and cleanup.
-- `TournamentData` loads tournament settings and the relative paths of the two event files.
+- `TournamentConfigRepository` loads tournament settings and the relative paths of the two event files.
 - `TournamentEvent` definitions create isolated runtime subscriptions for each tournament.
 - `EventSubscriptionView` exposes event subscriptions without exposing event invocation to consumers.
 
@@ -79,8 +79,8 @@ The repository includes a `runServer` task configured for Paper 26.1.2 with a 2 
 3. Before the first server start, copy the three bundled files in `generators/` to
    `plugins/innotournament-paper/generators/` on the server. The plugin requires all three profiles and
    does not create or modify them.
-4. Start the server once, then create the tournament directory if it does not exist. No tournament
-   configuration is generated automatically.
+4. Start the server once, then create the tournament directory if it does not exist. No configuration is
+   generated automatically.
 5. Place tournament JSON files under:
 
    ```text
@@ -99,11 +99,11 @@ No ready-made tournament configuration is bundled yet.
 
 ### Tournament administration
 
-These commands require the vanilla `minecraft.command.function` permission.
+These commands require the `innotournament.admin` permission.
 
 - `/tournament select <filePath>` - select a JSON file from the tournament directory.
 - `/tournament prepare` - create and prepare the selected tournament.
-- `/tournament start` - prepare the tournament if needed, then start it.
+- `/tournament start` - start the prepared tournament.
 - `/tournament stop` - remove the active tournament and its runtime state.
 
 ### Teams
@@ -121,16 +121,14 @@ Players with `innotournament.admin` bypass pre-start game-mode enforcement.
 
 ### Utility
 
+- `/inno give <player> <item> [count]` - give a special generator or dice item (requires `innotournament.admin`).
 - `/worldborderinfo` - show the direction and distance to the nearest side of the current world's border.
 
 ## Current Limitations
 
 - Team state is saved in `teams.json`; invitations are transient and expire during runtime. Active tournament state is not persisted across restarts.
-- The sidebar, pre-start boundary enforcement, repeated-team initialization, and some natural-end listener
-  cleanup paths are still incomplete.
-- Offline participants can keep a team alive, while an empty started tournament ends on its first tick.
-- Original custom content, client networking, and JourneyMap integration have not been ported.
-- No bundled end-to-end tournament configuration is provided yet.
+- The sidebar is not connected to the tournament yet.
+- Original custom content and a bundled end-to-end tournament configuration are not provided.
 
 See the [original Architectury implementation](https://github.com/necr0manth/InnoTournament) for the
 pre-port codebase.

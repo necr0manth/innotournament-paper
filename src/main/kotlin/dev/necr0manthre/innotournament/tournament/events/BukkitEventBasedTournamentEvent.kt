@@ -25,7 +25,11 @@ abstract class BukkitEventBasedTournamentEvent<T : Event, V>(
                 eventClass.java,
                 subscription!!,
                 EventPriority.LOW,
-                { _, event -> handler(eventClass.java.cast(event), backingEvent::invoke) },
+                { _, event ->
+                    if (eventClass.java.isInstance(event)) {
+                        handler(eventClass.java.cast(event), backingEvent::invoke)
+                    }
+                },
                 Innotournament.instance
             )
         return TournamentEventInstance(tournament, backingEvent) {
