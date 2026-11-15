@@ -37,6 +37,7 @@ class Innotournament : JavaPlugin(), Listener {
     private lateinit var generatorInteractionListener: GeneratorInteractionListener
     private lateinit var mapPresentation: MapPresentation
     private lateinit var mapItemDelivery: MapItemDelivery
+    private lateinit var journeyMapDelivery: JourneyMapDelivery
     private lateinit var tournamentControl: TournamentControl
     private lateinit var tournamentConfigEditor: TournamentConfigEditor
     private lateinit var generatorTickTask: BukkitTask
@@ -75,6 +76,12 @@ class Innotournament : JavaPlugin(), Listener {
 
         mapPresentation = MapPresentation(this, generatorPlacementLifecycle, mapStore)
         mapItemDelivery = MapItemDelivery(this, mapPresentation)
+        journeyMapDelivery = JourneyMapDelivery(
+            this,
+            generatorPlacementLifecycle,
+            mapStore,
+            config.getBoolean("journeymap.enabled", false)
+        )
 
         inviteSystem.register(this)
         generatorTickTask = server.scheduler.runTaskTimer(this, Runnable(generatorRuntime::tick), 1L, 1L)
@@ -105,6 +112,7 @@ class Innotournament : JavaPlugin(), Listener {
         }
         if (::generatorTickTask.isInitialized) generatorTickTask.cancel()
         if (::teamSaveTask.isInitialized) teamSaveTask.cancel()
+        if (::journeyMapDelivery.isInitialized) journeyMapDelivery.close()
         if (::mapPresentation.isInitialized) mapPresentation.close()
         if (::inviteSystem.isInitialized) inviteSystem.close()
         HandlerList.unregisterAll(this as Listener)

@@ -34,6 +34,10 @@ class MapPresentationStore(private val path: Path) {
     val records: List<MapPresentationRecord>
         get() = Collections.unmodifiableList(recordsById.values.toList())
 
+    /** A detached, read-only snapshot of every managed name ever published. */
+    val publishedWaypointNames: Set<String>
+        get() = Collections.unmodifiableSet(LinkedHashSet(waypointNames))
+
     fun recordForArea(area: MapAreaKey): MapPresentationRecord? =
         recordsById.values.firstOrNull { it.area == area }
 
@@ -50,6 +54,17 @@ class MapPresentationStore(private val path: Path) {
         updated[record.id] = record
         save(updated, waypointNames)
         recordsById = updated
+        return true
+    }
+
+    /** Remembers a batch of names with one durable write before a caller publishes any of them. */
+    fun rememberWaypointNames(names: Collection<String>): Boolean {
+        require(names.all(String::isNotBlank)) { "Managed waypoint names must not be blank" }
+        val updated = LinkedHashSet(waypointNames)
+        updated.addAll(names)
+        if (updated == waypointNames) return false
+        save(recordsById, updated)
+        waypointNames = updated
         return true
     }
 

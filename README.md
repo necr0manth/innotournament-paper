@@ -129,6 +129,8 @@ Players with `innotournament.admin` bypass pre-start game-mode enforcement.
 ## Current Limitations
 
 - Team state is saved in `teams.json`; invitations are transient and expire during runtime. Active tournament state is not persisted across restarts.
+- JourneyMap waypoint delivery is optional and disabled unless `journeymap.enabled` is set to `true` in
+  the plugin configuration.
 - Original custom content and a bundled end-to-end tournament configuration are not provided.
 
 See the [original Architectury implementation](https://github.com/necr0manth/InnoTournament) for the
