@@ -36,6 +36,7 @@ class Tournament(
     private val playerEffects: TournamentPlayerEffects,
     private val presentation: TournamentPresentation,
     private val plugin: Plugin,
+    private val afterParticipationReset: (Player) -> Unit,
     private val afterSuccessfulStart: (Tournament) -> Unit
 ) {
     private val settings = definition.settings
@@ -85,6 +86,7 @@ class Tournament(
                 pluginPlayer.team === team.pluginTeam) { "Tournament participation changed during its reset" }
             preparation = ParticipationPreparation.READY
             advancementHandler.syncCurrentParticipation(this)
+            afterParticipationReset(player)
         }
     }
 

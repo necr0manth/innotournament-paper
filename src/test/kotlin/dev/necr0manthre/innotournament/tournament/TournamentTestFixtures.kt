@@ -71,6 +71,7 @@ internal fun testTournament(
         TournamentPlayerEffects(environment),
         presentation,
         plugin,
+        {},
         {}
     )
 }

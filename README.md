@@ -123,6 +123,7 @@ Players with `innotournament.admin` bypass pre-start game-mode enforcement.
 ### Utility
 
 - `/inno give <player> <item> [count]` - give a special generator or dice item (requires `innotournament.admin`).
+- `/inno map` - give the current world's managed map to yourself.
 - `/worldborderinfo` - show the direction and distance to the nearest side of the current world's border.
 
 ## Current Limitations
