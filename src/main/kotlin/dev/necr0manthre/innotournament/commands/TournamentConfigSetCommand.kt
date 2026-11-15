@@ -103,5 +103,5 @@ object TournamentConfigSetCommand {
     }
 
     private fun structureTemplates() =
-        (Bukkit.getServer() as CraftServer).server.structureManager.listTemplates().iterator().asSequence().toList()
+        (Bukkit.getServer() as CraftServer).server.structureTemplateManager.listTemplates().iterator().asSequence().toList()
 }

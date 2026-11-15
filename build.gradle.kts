@@ -21,10 +21,10 @@ configurations.testImplementation {
 }
 
 dependencies {
-    paperweight.paperDevBundle("26.1.2.build.+")
+    paperweight.paperDevBundle("26.3.build.+")
     implementation("xyz.jpenilla:gremlin-runtime:0.0.9")
     runtimeDownload("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
-    runtimeDownload("net.kyori:adventure-nbt:4.26.1")
+    runtimeDownload("net.kyori:adventure-nbt:5.2.0")
     testImplementation("org.junit.jupiter:junit-jupiter:5.13.4")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.13.4")
 }
@@ -32,7 +32,7 @@ dependencies {
 paperPluginYaml {
     main = "dev.necr0manthre.innotournament.Innotournament"
     loader = "xyz.jpenilla.gremlin.runtime.platformsupport.DefaultsPaperPluginLoader"
-    apiVersion = "26.1.2"
+    apiVersion = "26.3"
     permissions.register("innotournament.admin") {
         description.set("Allows access to tournament administration commands")
         default.set(xyz.jpenilla.resourcefactory.bukkit.Permission.Default.OP)
@@ -46,10 +46,10 @@ kotlin {
 // Client resource pack is a separate, reproducible ZIP; it is not placed in the plugin JAR.
 val packageResourcePack = tasks.register<Zip>("packageResourcePack") {
     group = "build"
-    description = "Package the InnoTournament resource pack for Minecraft 26.1.2."
+    description = "Package the InnoTournament resource pack for Minecraft 26.3."
     from(layout.projectDirectory.dir("resource-pack"))
     destinationDirectory.set(layout.buildDirectory.dir("libs"))
-    archiveFileName.set("innotournament-resource-pack-26.1.2.zip")
+    archiveFileName.set("innotournament-resource-pack-26.3.zip")
     isReproducibleFileOrder = true
     isPreserveFileTimestamps = false
 }
@@ -60,7 +60,7 @@ val resourcePackSha1 = tasks.register("resourcePackSha1") {
     dependsOn(packageResourcePack)
 
     val archive = packageResourcePack.flatMap { it.archiveFile }
-    val sha1File = layout.buildDirectory.file("libs/innotournament-resource-pack-26.1.2.zip.sha1")
+    val sha1File = layout.buildDirectory.file("libs/innotournament-resource-pack-26.3.zip.sha1")
     inputs.file(archive)
     outputs.file(sha1File)
 
@@ -98,8 +98,8 @@ tasks {
         // Configure the Minecraft version for our task.
         // This is the only required configuration besides applying the plugin.
         // Your plugin's jar (or shadowJar if present) will be used automatically.
-        minecraftVersion("26.1.2")
-        jvmArgs("-Xms2G", "-Xmx2G", "-Dcom.mojang.eula.agree=true")
+        minecraftVersion("26.3")
+        jvmArgs("-Xms2G", "-Xmx8G", "-Dcom.mojang.eula.agree=true")
     }
 }
 
