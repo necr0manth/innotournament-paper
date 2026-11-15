@@ -205,7 +205,7 @@ class PlayerNameLookupTest {
         }
     }
 
-    private fun clickEvents(component: Component): List<ClickEvent> {
+    private fun clickEvents(component: Component): List<ClickEvent<*>> {
         return listOfNotNull(component.clickEvent()) + component.children().flatMap(::clickEvents)
     }
 

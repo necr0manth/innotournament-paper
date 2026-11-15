@@ -40,7 +40,7 @@ Only one tournament can be active at a time.
 ## Requirements
 
 - JDK 25
-- Paper 26.1.2
+- Paper 26.3
 
 The Gradle build downloads the Paper development bundle and Kotlin runtime dependencies automatically.
 
@@ -66,7 +66,7 @@ build/libs/innotournament-paper-1.0-all.jar
 
 ## Development Server
 
-The repository includes a `runServer` task configured for Paper 26.1.2 with a 2 GiB heap:
+The repository includes a `runServer` task configured for Paper 26.3 with a 2–8 GiB heap:
 
 ```powershell
 .\gradlew.bat runServer
